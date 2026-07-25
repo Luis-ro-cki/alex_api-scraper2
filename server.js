@@ -1,96 +1,63 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
-import rateLimit from '@fastify/rate-limit';
 import view from '@fastify/view';
 import ejs from 'ejs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import yts from 'yt-search'; // Librería de búsqueda real
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const fastify = Fastify({ logger: true });
+const fastify = Fastify({ logger: false });
 
-// --- CONFIGURACIÓN DE LAS API KEYS ---
 const DATABASE = {
     keys: {
         "ALEX-PRO-888": { plan: "PREMIUM", limit: "Infinito", used: 0 },
-        "ALEX-FREE-777": { plan: "FREE", limit: 4000, used: 0 },
-        "ALEX-MASTER-999": { plan: "ADMIN", limit: "Infinito", used: 0 }
+        "ALEX-FREE-777": { plan: "FREE", limit: 4000, used: 0 }
     }
 };
 
-// --- CONFIGURACIÓN DE FASTIFY ---
 fastify.register(cors);
-fastify.register(view, { 
-    engine: { ejs },
-    root: path.join(__dirname, 'views') 
-});
+fastify.register(view, { engine: { ejs }, root: path.join(__dirname, 'views') });
 
-fastify.register(rateLimit, {
-    max: 100,
-    timeWindow: '1 minute'
-});
+// API: Búsqueda en YouTube Real
+fastify.get('/api/v1/scraper/ytsearch', async (request, reply) => {
+    const { query, apikey } = request.query;
+    
+    // Validación de Key
+    if (!apikey || !DATABASE.keys[apikey]) {
+        return reply.code(401).send({ status: false, message: "API KEY INVÁLIDA" });
+    }
 
-// Middleware: Validación de API KEY
-fastify.addHook('preHandler', async (request, reply) => {
-    if (request.url.startsWith('/api/')) {
-        const key = request.query.apikey || request.headers['x-api-key'];
+    if (!query) return { status: false, message: "Falta el parámetro query" };
+
+    try {
+        const search = await yts(query); // Busca en YouTube
+        const videos = search.videos.slice(0, 10); // Toma los primeros 10 resultados
         
-        if (!key || !DATABASE.keys[key]) {
-            return reply.code(401).send({ 
-                status: false, 
-                message: "API KEY NO VÁLIDA" 
-            });
-        }
-        DATABASE.keys[key].used++;
+        DATABASE.keys[apikey].used++; // Aumenta uso
+        
+        return {
+            status: true,
+            author: "Alex Scraper",
+            results: videos.map(v => ({
+                title: v.title,
+                url: v.url,
+                duration: v.timestamp,
+                views: v.views,
+                thumbnail: v.thumbnail
+            }))
+        };
+    } catch (e) {
+        return { status: false, message: "Error en la búsqueda" };
     }
 });
 
-// Ruta del Portal (Dashboard)
-fastify.get('/', async (request, reply) => {
-    return reply.view('portal.ejs', { keys: DATABASE.keys });
-});
+// Portal
+fastify.get('/', async (req, reply) => reply.view('portal.ejs', { keys: DATABASE.keys }));
 
-// --- API ENDPOINTS ---
-
-// YouTube
-fastify.get('/api/v1/download/yt', async (request) => {
-    const { url } = request.query;
-    return {
-        status: true,
-        author: "Alex Scraper",
-        result: {
-            title: "Video YouTube",
-            url_download: "https://ejemplo.com/dl",
-            thumb: "https://i.ytimg.com/vi/example/0.jpg"
-        }
-    };
-});
-
-// TikTok
-fastify.get('/api/v1/download/tiktok', async (request) => {
-    return {
-        status: true,
-        result: {
-            video: "https://tiktok.com/file.mp4",
-            desc: "Descargado con Alex API"
-        }
-    };
-});
-
-// Google Maps
-fastify.get('/api/v1/scraper/gmaps', async (request) => {
-    return {
-        status: true,
-        results: [{ name: "Alex Store", phone: "+123", rating: 5.0 }]
-    };
-});
-
-// INICIO (RENDER COMPATIBLE)
 const start = async () => {
     try {
-        const port = process.env.PORT || 3000;
-        await fastify.listen({ port: port, host: '0.0.0.0' });
-        console.log(`ONLINE EN PUERTO: ${port}`);
+        await fastify.listen({ port: process.env.PORT || 3000, host: '0.0.0.0' });
     } catch (err) {
         process.exit(1);
     }
