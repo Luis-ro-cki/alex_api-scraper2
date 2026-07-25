@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Alex Scraper | Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #121414; color: #00f0ff; font-family: 'monospace'; }
+        .cyber-card { border: 1px solid #00f0ff33; background: #1a1d1d; }
+        .neon-text { text-shadow: 0 0 10px #00f0ff; }
+    </style>
+</head>
+<body class="p-6 md:p-20">
+    <div class="max-w-5xl mx-auto">
+        <header class="flex justify-between items-center border-b border-[#00f0ff]/50 pb-6 mb-10">
+            <h1 class="text-3xl font-bold italic neon-text tracking-tighter">ALEX_SCRAPER_V1</h1>
+            <span class="text-xs text-green-400 font-bold uppercase tracking-widest">● System Online</span>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+            <div class="cyber-card p-6 rounded">
+                <h3 class="text-xs opacity-50 mb-4 uppercase">Gestión de API Keys</h3>
+                <div class="space-y-3">
+                    <% Object.keys(keys).forEach(key => { %>
+                        <div class="flex justify-between text-sm border-b border-white/5 pb-2">
+                            <span class="text-white"><%= key %></span>
+                            <span class="text-[#00f0ff]">[<%= keys[key].plan %>]</span>
+                            <span class="opacity-60"><%= keys[key].used %> Reqs</span>
+                        </div>
+                    <% }) %>
+                </div>
+            </div>
+
+            <div class="cyber-card p-6 rounded">
+                <h3 class="text-xs opacity-50 mb-4 uppercase">Documentación Rápida</h3>
+                <div class="text-[11px] space-y-2 font-mono">
+                    <p class="text-yellow-400">/api/v1/download/yt?url={url}&apikey={key}</p>
+                    <p class="text-yellow-400">/api/v1/download/tiktok?url={url}&apikey={key}</p>
+                    <p class="text-yellow-400">/api/v1/scraper/gmaps?query={text}&apikey={key}</p>
+                </div>
+            </div>
+        </div>
+
+        <footer class="text-center opacity-30 text-[10px] uppercase">
+            Alex Scraper Infrastructure &copy; 2024
+        </footer>
+    </div>
+</body>
+</html>
