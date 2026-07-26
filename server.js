@@ -199,8 +199,77 @@ const Scrapers = {
     }),
     gmaps: async (query) => {
         return { search: query, results: [{ name: "Alex Business", rating: "5.0", address: "Cyber Street 123", status: "Open" }] };
-    }
+    },
+    identificar: async (url) => conReintentos(() => identificarContenido(url))
 };
+
+// --- IDENTIFICADOR DE CONTENIDO (¿es video o audio, y de qué plataforma?) ---
+function detectarPlataforma(url) {
+    const u = url.toLowerCase();
+    if (u.includes('tiktok.com')) return 'tiktok';
+    if (u.includes('facebook.com') || u.includes('fb.watch')) return 'facebook';
+    if (u.includes('twitter.com') || u.includes('x.com')) return 'twitter';
+    if (u.includes('pinterest.com') || u.includes('pin.it')) return 'pinterest';
+    if (u.includes('youtube.com') || u.includes('youtu.be')) return 'youtube';
+    if (u.includes('soundcloud.com')) return 'soundcloud';
+    if (u.includes('spotify.com')) return 'spotify';
+    return 'desconocida';
+}
+
+async function identificarContenido(url) {
+    const plataforma = detectarPlataforma(url);
+    let mediaUrl = null;
+    let infoExtra = {};
+
+    switch (plataforma) {
+        case 'tiktok': {
+            const data = await Scrapers.tiktok(url);
+            mediaUrl = data.play || data.hdplay || data.wmplay;
+            infoExtra = { titulo: data.title, autor: data.author?.nickname };
+            break;
+        }
+        case 'facebook': {
+            const data = await Scrapers.facebook(url);
+            mediaUrl = data.video_url;
+            break;
+        }
+        case 'twitter': {
+            const data = await Scrapers.twitter(url);
+            mediaUrl = data.url || data.video || data.download || (Array.isArray(data) ? data[0]?.url : null);
+            break;
+        }
+        case 'pinterest': {
+            const data = await Scrapers.pinterest(url);
+            mediaUrl = data.download_url;
+            break;
+        }
+        case 'youtube': {
+            const data = await Scrapers.youtube(url);
+            return { plataforma: 'youtube', tipo: 'video', nota: 'YouTube casi siempre es contenido de video.', info: Array.isArray(data) ? data[0] : data };
+        }
+        case 'soundcloud':
+            return { plataforma: 'soundcloud', tipo: 'audio', nota: 'SoundCloud es una plataforma exclusivamente de audio.' };
+        case 'spotify':
+            return { plataforma: 'spotify', tipo: 'audio', nota: 'Spotify es una plataforma exclusivamente de audio.' };
+        default:
+            throw new Error('No reconozco esa plataforma. Soportadas: TikTok, Facebook, Twitter/X, Pinterest, YouTube, SoundCloud, Spotify.');
+    }
+
+    if (!mediaUrl) throw new Error('No se pudo obtener el archivo multimedia de ese enlace para identificar el tipo.');
+
+    let tipo = 'desconocido';
+    try {
+        const head = await httpClient.head(mediaUrl, { timeout: 10000 });
+        const ct = head.headers['content-type'] || '';
+        if (ct.startsWith('video/')) tipo = 'video';
+        else if (ct.startsWith('audio/')) tipo = 'audio';
+        else if (ct.startsWith('image/')) tipo = 'imagen';
+    } catch (e) {
+        tipo = 'desconocido (no se pudo verificar el tipo de archivo directamente)';
+    }
+
+    return { plataforma, tipo, media_url: mediaUrl, ...infoExtra };
+}
 
 // --- MÉTRICAS REALES ---
 const latencySamples = [];
@@ -348,7 +417,8 @@ const ENDPOINT_LIST = [
     { id: 'facebook', name: 'Facebook Downloader', path: '/api/v1/download/facebook', param: 'url', placeholder: 'https://www.facebook.com/.../videos/...', desc: 'Descarga video de Facebook.' },
     { id: 'twitter', name: 'Twitter / X Downloader', path: '/api/v1/download/twitter', param: 'url', placeholder: 'https://twitter.com/user/status/12345', desc: 'Descarga video de un tweet.' },
     { id: 'pinterest', name: 'Pinterest Downloader', path: '/api/v1/download/pinterest', param: 'url', placeholder: 'https://pin.it/xxxxx', desc: 'Descarga contenido de Pinterest.' },
-    { id: 'gmaps', name: 'Google Maps Scraper', path: '/api/v1/scraper/gmaps', param: 'query', placeholder: 'restaurantes en CDMX', desc: 'Busca negocios en Google Maps.' }
+    { id: 'gmaps', name: 'Google Maps Scraper', path: '/api/v1/scraper/gmaps', param: 'query', placeholder: 'restaurantes en CDMX', desc: 'Busca negocios en Google Maps.' },
+    { id: 'identify', name: 'Identificador de Contenido', path: '/api/v1/identify', param: 'url', placeholder: 'Enlace de TikTok, YouTube, Facebook, SoundCloud, Spotify...', desc: 'Identifica si un enlace es video o audio, y de qué plataforma es.' }
 ];
 
 fastify.get('/endpoints', { preHandler: requireLogin }, async (req, reply) => {
@@ -410,6 +480,10 @@ fastify.get('/api/v1/download/pinterest', async (req) => {
 fastify.get('/api/v1/scraper/gmaps', async (req) => {
     if (!req.query.query) throw new Error("Falta el parámetro 'query'");
     return { status: true, creator: "Alex", query: req.query.query, result: await Scrapers.gmaps(req.query.query) };
+});
+fastify.get('/api/v1/identify', async (req) => {
+    if (!req.query.url) throw new Error("Falta el parámetro 'url'");
+    return { status: true, creator: "Alex", url: req.query.url, result: await Scrapers.identificar(req.query.url) };
 });
 
 // --- INICIO DEL SERVIDOR ---
