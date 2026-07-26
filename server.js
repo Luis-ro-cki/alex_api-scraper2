@@ -6,6 +6,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import view from '@fastify/view';
 import ejs from 'ejs';
+import cors from '@fastify/cors';
+import rateLimit from '@fastify/rate-limit';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fastify = Fastify({ logger: false });
@@ -21,6 +23,15 @@ const DATABASE = {
 
 // --- REGISTRO DE PLUGINS ---
 fastify.register(view, { engine: { ejs }, root: path.join(__dirname, 'views') });
+
+fastify.register(cors, {
+    origin: true // Permite peticiones desde cualquier origen. Restringe esto a tu(s) dominio(s) si quieres más control.
+});
+
+fastify.register(rateLimit, {
+    max: 100,        // máximo de peticiones
+    timeWindow: '1 minute' // por IP, cada minuto
+});
 
 // --- MOTORES DE EXTRACCIÓN (SCRAPERS REALES) ---
 const Scrapers = {
