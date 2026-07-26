@@ -16,7 +16,6 @@
     "axios": "^1.6.2",
     "cheerio": "^1.0.0-rc.12",
     "ejs": "^3.1.9",
-    "yt-search": "^2.10.4",
     "mongoose": "^8.0.3",
     "bcryptjs": "^2.4.3",
     "jsonwebtoken": "^9.0.2"
