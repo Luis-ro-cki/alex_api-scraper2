@@ -28,16 +28,16 @@
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
             <div class="cyber-border p-6 rounded">
-                <p class="text-[10px] opacity-40 uppercase">Global Uptime</p>
-                <h2 class="text-3xl font-bold mt-1">99.9%</h2>
+                <p class="text-[10px] opacity-40 uppercase">Server Uptime</p>
+                <h2 class="text-3xl font-bold mt-1"><%= uptime %></h2>
             </div>
             <div class="cyber-border p-6 rounded">
                 <p class="text-[10px] opacity-40 uppercase">Latency Average</p>
-                <h2 class="text-3xl font-bold mt-1">32ms</h2>
+                <h2 class="text-3xl font-bold mt-1"><%= avgLatency %>ms</h2>
             </div>
             <div class="cyber-border p-6 rounded">
                 <p class="text-[10px] opacity-40 uppercase">Active Scrapers</p>
-                <h2 class="text-3xl font-bold mt-1">08</h2>
+                <h2 class="text-3xl font-bold mt-1"><%= activeScrapers %></h2>
             </div>
         </div>
 
@@ -57,11 +57,14 @@
                     </thead>
                     <tbody>
                         <% Object.keys(keys).forEach(k => { %>
+                        <% const acc = keys[k]; const limitReached = acc.used >= acc.limit; %>
                         <tr class="border-b border-white/5 hover:bg-[#00f0ff]/5 transition-all">
                             <td class="p-5 text-white"><%= k %></td>
-                            <td><span class="bg-[#00f0ff]/10 text-[#00f0ff] px-2 py-1 rounded text-[10px]"><%= keys[k].plan %></span></td>
-                            <td><%= keys[k].used %> / <%= keys[k].limit %></td>
-                            <td class="text-green-500 italic font-bold">READY</td>
+                            <td><span class="bg-[#00f0ff]/10 text-[#00f0ff] px-2 py-1 rounded text-[10px]"><%= acc.plan %></span></td>
+                            <td><%= acc.used %> / <%= acc.limit %></td>
+                            <td class="<%= limitReached ? 'text-red-500' : 'text-green-500' %> italic font-bold">
+                                <%= limitReached ? 'LIMIT_REACHED' : 'READY' %>
+                            </td>
                         </tr>
                         <% }) %>
                     </tbody>
