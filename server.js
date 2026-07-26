@@ -109,13 +109,37 @@ fastify.addHook('preHandler', async (req, reply) => {
     }
 });
 
+// --- MÉTRICAS REALES (latencia promedio de las últimas peticiones) ---
+const latencySamples = [];
+fastify.addHook('onResponse', (req, reply, done) => {
+    latencySamples.push(reply.elapsedTime);
+    if (latencySamples.length > 50) latencySamples.shift(); // solo las últimas 50
+    done();
+});
+const getAvgLatency = () => {
+    if (latencySamples.length === 0) return 0;
+    const avg = latencySamples.reduce((a, b) => a + b, 0) / latencySamples.length;
+    return Math.round(avg);
+};
+const formatUptime = (seconds) => {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    return `${h}h ${m}m ${s}s`;
+};
+
 // --- MANEJO CENTRALIZADO DE ERRORES ---
 fastify.setErrorHandler((error, req, reply) => {
     reply.code(500).send({ status: false, message: error.message || "Error interno del servidor" });
 });
 
 // --- RUTAS ---
-fastify.get('/', (req, reply) => reply.view('portal.ejs', { keys: DATABASE.keys }));
+fastify.get('/', (req, reply) => reply.view('portal.ejs', {
+    keys: DATABASE.keys,
+    activeScrapers: Object.keys(Scrapers).length,
+    avgLatency: getAvgLatency(),
+    uptime: formatUptime(process.uptime())
+}));
 
 fastify.get('/api/v1/download/tiktok', async (req) => {
     if (!req.query.url) throw new Error("Falta el parámetro 'url'");
