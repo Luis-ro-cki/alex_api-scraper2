@@ -72,10 +72,22 @@ const Scrapers = {
         return data.data;
     },
     spotify: async (query) => {
-        const search = await yts(query);
-        const video = search.all[0];
+        let search;
+        try {
+            search = await yts(query);
+        } catch (e) {
+            throw new Error("El motor de búsqueda falló momentáneamente con ese término. Intenta de nuevo o usa otra frase.");
+        }
+        const results = (search && (search.videos || search.all)) || [];
+        const video = results.find(v => v && typeof v.title === 'string' && v.title.length > 0);
         if (!video) throw new Error("No se encontraron resultados en Spotify Engine");
-        return { title: video.title, author: video.author.name, thumbnail: video.thumbnail, url: video.url, timestamp: video.timestamp };
+        return {
+            title: video.title,
+            author: (video.author && video.author.name) || 'Desconocido',
+            thumbnail: video.thumbnail,
+            url: video.url,
+            timestamp: video.timestamp
+        };
     },
     facebook: async (url) => {
         const { data } = await axios.post('https://getmyfb.com/process', new URLSearchParams({ urls: url, locale: 'en' }));
