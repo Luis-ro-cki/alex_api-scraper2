@@ -225,7 +225,12 @@ async function identificarContenido(url) {
         case 'tiktok': {
             const data = await Scrapers.tiktok(url);
             mediaUrl = data.play || data.hdplay || data.wmplay;
-            infoExtra = { titulo: data.title, autor: data.author?.nickname };
+            infoExtra = {
+                titulo: data.title,
+                autor_video: data.author?.nickname,
+                cancion: data.music_info?.title || null,
+                artista_cancion: data.music_info?.author || null
+            };
             break;
         }
         case 'facebook': {
@@ -258,15 +263,35 @@ async function identificarContenido(url) {
     if (!mediaUrl) throw new Error('No se pudo obtener el archivo multimedia de ese enlace para identificar el tipo.');
 
     let tipo = 'desconocido';
+
+    // Intento 1: pedirle al servidor el tipo real del archivo (content-type)
     try {
-        const head = await httpClient.head(mediaUrl, { timeout: 10000 });
+        const head = await httpClient.head(mediaUrl, {
+            timeout: 10000,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36',
+                'Referer': 'https://www.tiktok.com/'
+            }
+        });
         const ct = head.headers['content-type'] || '';
         if (ct.startsWith('video/')) tipo = 'video';
         else if (ct.startsWith('audio/')) tipo = 'audio';
         else if (ct.startsWith('image/')) tipo = 'imagen';
     } catch (e) {
-        tipo = 'desconocido (no se pudo verificar el tipo de archivo directamente)';
+        // El CDN bloqueó la petición directa, seguimos al intento 2
     }
+
+    // Intento 2 (respaldo): muchos enlaces ya traen el tipo en su propia URL, ej: mime_type=video_mp4
+    if (tipo === 'desconocido') {
+        const m = mediaUrl.match(/mime_type=([a-zA-Z0-9_]+)/i) || mediaUrl.match(/\.(mp4|mov|mkv|webm)(\?|$)/i) || mediaUrl.match(/\.(mp3|wav|m4a|ogg)(\?|$)/i);
+        if (m) {
+            const valor = m[1].toLowerCase();
+            if (valor.includes('video') || ['mp4', 'mov', 'mkv', 'webm'].includes(valor)) tipo = 'video';
+            else if (valor.includes('audio') || ['mp3', 'wav', 'm4a', 'ogg'].includes(valor)) tipo = 'audio';
+        }
+    }
+
+    if (tipo === 'desconocido') tipo = 'desconocido (no se pudo verificar el tipo de archivo)';
 
     return { plataforma, tipo, media_url: mediaUrl, ...infoExtra };
 }
