@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>ALEX SCRAPER | MI CUENTA</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Geist+Mono&display=swap" rel="stylesheet">
+    <style>
+        body { background-color: #0c0e0e; color: #00f0ff; font-family: 'Geist Mono', monospace; }
+        .cyber-border { border: 1px solid rgba(0, 240, 255, 0.3); background: #111313; box-shadow: 0 0 15px rgba(0, 240, 255, 0.05); }
+        .neon-text { text-shadow: 0 0 10px #00f0ff; }
+    </style>
+</head>
+<body class="p-4 md:p-10">
+    <div class="max-w-2xl mx-auto">
+        <header class="flex justify-between items-center border-b border-[#00f0ff]/40 pb-6 mb-8">
+            <div>
+                <h1 class="text-2xl font-black italic neon-text">MI_CUENTA</h1>
+                <p class="text-[10px] text-white/40 tracking-widest uppercase mt-1"><%= email %></p>
+            </div>
+            <a href="/logout" class="text-[10px] uppercase tracking-widest text-red-400 border border-red-400/40 px-3 py-2 rounded hover:bg-red-400/10">Cerrar sesión</a>
+        </header>
+
+        <div class="cyber-border rounded-lg p-6 mb-6">
+            <p class="text-[10px] opacity-40 uppercase mb-2">Tu API Key</p>
+            <p class="text-lg font-bold text-white break-all"><%= apiKey %></p>
+            <p class="text-[10px] opacity-30 mt-2">Úsala en tus peticiones: <code>?apikey=<%= apiKey %></code></p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4 mb-6">
+            <div class="cyber-border rounded-lg p-6">
+                <p class="text-[10px] opacity-40 uppercase">Plan actual</p>
+                <h2 class="text-2xl font-bold mt-1 <%= plan === 'premium' ? 'text-yellow-400' : 'text-[#00f0ff]' %>">
+                    <%= plan === 'premium' ? 'PREMIUM' : 'GRATIS' %>
+                </h2>
+                <% if (plan === 'premium' && premiumUntil) { %>
+                    <p class="text-[10px] opacity-40 mt-1">Vence: <%= new Date(premiumUntil).toLocaleDateString('es-MX') %></p>
+                <% } %>
+            </div>
+            <div class="cyber-border rounded-lg p-6">
+                <p class="text-[10px] opacity-40 uppercase">Solicitudes usadas</p>
+                <h2 class="text-2xl font-bold mt-1"><%= requestsUsed %> / <%= limit %></h2>
+                <% if (plan !== 'premium') { %><p class="text-[10px] opacity-30 mt-1">Se reinicia cada semana</p><% } %>
+            </div>
+        </div>
+
+        <% if (plan !== 'premium') { %>
+        <div class="cyber-border rounded-lg p-6">
+            <p class="text-sm font-bold uppercase tracking-widest mb-2">Hazte Premium</p>
+            <p class="text-[11px] opacity-50 mb-4">$5 USD · Solicitudes ilimitadas durante 1 mes</p>
+            <form action="https://www.paypal.com/cgi-bin/webscr" method="post" target="_blank">
+                <input type="hidden" name="cmd" value="_xclick">
+                <input type="hidden" name="business" value="<%= paypalEmail %>">
+                <input type="hidden" name="item_name" value="ALEX_SCRAPER_API - Plan Premium (1 mes)">
+                <input type="hidden" name="amount" value="5.00">
+                <input type="hidden" name="currency_code" value="USD">
+                <input type="hidden" name="custom" value="<%= apiKey %>">
+                <input type="hidden" name="notify_url" value="<%= baseUrl %>/api/paypal/ipn">
+                <input type="hidden" name="return" value="<%= baseUrl %>/dashboard">
+                <button type="submit" class="w-full bg-yellow-400/10 border border-yellow-400/50 text-yellow-400 py-3 rounded text-sm font-bold uppercase tracking-widest hover:bg-yellow-400/20 transition-all">
+                    Pagar con PayPal · $5
+                </button>
+            </form>
+            <p class="text-[10px] opacity-30 mt-3">Tu plan se activa automáticamente unos segundos después de confirmar el pago.</p>
+        </div>
+        <% } else { %>
+        <div class="cyber-border rounded-lg p-6 text-center">
+            <p class="text-sm text-yellow-400 font-bold uppercase">✓ Ya eres Premium — disfruta de solicitudes ilimitadas</p>
+        </div>
+        <% } %>
+    </div>
+</body>
+</html>
