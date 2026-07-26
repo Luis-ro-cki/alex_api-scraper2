@@ -240,6 +240,24 @@ fastify.get('/dashboard', { preHandler: requireLogin }, async (req, reply) => {
     });
 });
 
+// --- PLAYGROUND DE ENDPOINTS (probar los scrapers en vivo) ---
+const ENDPOINT_LIST = [
+    { id: 'tiktok', name: 'TikTok Downloader', path: '/api/v1/download/tiktok', param: 'url', placeholder: 'https://vm.tiktok.com/xxxxx/', desc: 'Descarga video de TikTok sin marca de agua.' },
+    { id: 'spotify', name: 'Spotify / Búsqueda de audio', path: '/api/v1/download/spotify', param: 'url', placeholder: 'daddy yankee gasolina', desc: 'Busca metadata y audio por texto (usa motor de YouTube).' },
+    { id: 'facebook', name: 'Facebook Downloader', path: '/api/v1/download/facebook', param: 'url', placeholder: 'https://www.facebook.com/.../videos/...', desc: 'Descarga video de Facebook.' },
+    { id: 'twitter', name: 'Twitter / X Downloader', path: '/api/v1/download/twitter', param: 'url', placeholder: 'https://twitter.com/user/status/12345', desc: 'Descarga video de un tweet.' },
+    { id: 'pinterest', name: 'Pinterest Downloader', path: '/api/v1/download/pinterest', param: 'url', placeholder: 'https://pin.it/xxxxx', desc: 'Descarga contenido de Pinterest.' },
+    { id: 'gmaps', name: 'Google Maps Scraper', path: '/api/v1/scraper/gmaps', param: 'query', placeholder: 'restaurantes en CDMX', desc: 'Busca negocios en Google Maps.' }
+];
+
+fastify.get('/endpoints', { preHandler: requireLogin }, async (req, reply) => {
+    reply.view('endpoints.ejs', {
+        endpoints: ENDPOINT_LIST,
+        apiKey: req.currentUser.apiKey,
+        baseUrl: `${req.protocol}://${req.hostname}`
+    });
+});
+
 // --- PAYPAL: BOTÓN + IPN (notificación automática de pago) ---
 fastify.post('/api/paypal/ipn', async (req, reply) => {
     try {
@@ -270,27 +288,27 @@ fastify.post('/api/paypal/ipn', async (req, reply) => {
 // --- ENDPOINTS DE SCRAPING (requieren apikey) ---
 fastify.get('/api/v1/download/tiktok', async (req) => {
     if (!req.query.url) throw new Error("Falta el parámetro 'url'");
-    return { status: true, result: await Scrapers.tiktok(req.query.url) };
+    return { status: true, creator: "Alex", url: req.query.url, result: await Scrapers.tiktok(req.query.url) };
 });
 fastify.get('/api/v1/download/spotify', async (req) => {
     if (!req.query.url) throw new Error("Falta el parámetro 'url' (texto de búsqueda)");
-    return { status: true, result: await Scrapers.spotify(req.query.url) };
+    return { status: true, creator: "Alex", query: req.query.url, result: await Scrapers.spotify(req.query.url) };
 });
 fastify.get('/api/v1/download/facebook', async (req) => {
     if (!req.query.url) throw new Error("Falta el parámetro 'url'");
-    return { status: true, result: await Scrapers.facebook(req.query.url) };
+    return { status: true, creator: "Alex", url: req.query.url, result: await Scrapers.facebook(req.query.url) };
 });
 fastify.get('/api/v1/download/twitter', async (req) => {
     if (!req.query.url) throw new Error("Falta el parámetro 'url'");
-    return { status: true, result: await Scrapers.twitter(req.query.url) };
+    return { status: true, creator: "Alex", url: req.query.url, result: await Scrapers.twitter(req.query.url) };
 });
 fastify.get('/api/v1/download/pinterest', async (req) => {
     if (!req.query.url) throw new Error("Falta el parámetro 'url'");
-    return { status: true, result: await Scrapers.pinterest(req.query.url) };
+    return { status: true, creator: "Alex", url: req.query.url, result: await Scrapers.pinterest(req.query.url) };
 });
 fastify.get('/api/v1/scraper/gmaps', async (req) => {
     if (!req.query.query) throw new Error("Falta el parámetro 'query'");
-    return { status: true, result: await Scrapers.gmaps(req.query.query) };
+    return { status: true, creator: "Alex", query: req.query.query, result: await Scrapers.gmaps(req.query.query) };
 });
 
 // --- INICIO DEL SERVIDOR ---
