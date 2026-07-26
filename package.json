@@ -11,9 +11,14 @@
     "@fastify/cors": "^8.4.1",
     "@fastify/rate-limit": "^8.0.3",
     "@fastify/view": "^8.2.0",
+    "@fastify/cookie": "^9.3.1",
+    "@fastify/formbody": "^7.4.0",
     "axios": "^1.6.2",
     "cheerio": "^1.0.0-rc.12",
     "ejs": "^3.1.9",
-    "yt-search": "^2.10.4"
+    "yt-search": "^2.10.4",
+    "mongoose": "^8.0.3",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2"
   }
 }
