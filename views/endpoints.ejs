@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>ALEX SCRAPER | ENDPOINTS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Geist+Mono&display=swap" rel="stylesheet">
+    <style>
+        body { background-color: #0c0e0e; color: #00f0ff; font-family: 'Geist Mono', monospace; }
+        .cyber-border { border: 1px solid rgba(0, 240, 255, 0.3); background: #111313; }
+        input { background: #0c0e0e; border: 1px solid rgba(0,240,255,0.3); color: #fff; }
+        input:focus { outline: none; border-color: #00f0ff; }
+        pre { white-space: pre-wrap; word-break: break-all; }
+        .nav-link { font-size: 10px; text-transform: uppercase; letter-spacing: 0.15em; opacity: 0.6; }
+        .nav-link:hover { opacity: 1; }
+    </style>
+</head>
+<body class="p-4 md:p-10">
+    <div class="max-w-3xl mx-auto">
+        <header class="flex justify-between items-center border-b border-[#00f0ff]/40 pb-6 mb-8">
+            <h1 class="text-xl font-black italic">ALEX_SCRAPER_API</h1>
+            <nav class="flex gap-4">
+                <a href="/" class="nav-link">Inicio</a>
+                <a href="/endpoints" class="nav-link text-[#00f0ff] opacity-100">Endpoints</a>
+                <a href="/dashboard" class="nav-link">Cuenta</a>
+                <a href="/logout" class="nav-link text-red-400">Salir</a>
+            </nav>
+        </header>
+
+        <p class="text-[10px] opacity-40 uppercase tracking-widest mb-1">Tu API Key</p>
+        <p class="text-sm font-bold text-white mb-8 break-all"><%= apiKey %></p>
+
+        <div class="space-y-6">
+        <% endpoints.forEach(ep => { %>
+            <div class="cyber-border rounded-lg p-5">
+                <h2 class="text-sm font-bold uppercase tracking-widest mb-1"><%= ep.name %></h2>
+                <p class="text-[11px] opacity-50 mb-3"><%= ep.desc %></p>
+
+                <div class="bg-black/40 rounded p-2 text-[10px] mb-3 break-all">
+                    <span class="text-green-400 font-bold">GET</span>
+                    <%= ep.path %>?<%= ep.param %>=TU_VALOR&apikey=<%= apiKey %>
+                </div>
+
+                <div class="flex gap-2 mb-3">
+                    <input id="input-<%= ep.id %>" type="text" placeholder="<%= ep.placeholder %>" class="flex-1 p-2 rounded text-xs">
+                    <button onclick="probar('<%= ep.id %>', '<%= ep.path %>', '<%= ep.param %>')"
+                        class="bg-[#00f0ff]/10 border border-[#00f0ff]/50 text-[#00f0ff] px-4 py-2 rounded text-xs font-bold uppercase hover:bg-[#00f0ff]/20 transition-all whitespace-nowrap">
+                        Probar
+                    </button>
+                </div>
+
+                <div class="flex justify-between items-center mb-2">
+                    <p class="text-[10px] opacity-40 uppercase">Resultado</p>
+                    <div class="flex gap-3">
+                        <button onclick="copiarEndpoint('<%= ep.id %>', '<%= ep.path %>', '<%= ep.param %>')" class="text-[10px] underline opacity-60 hover:opacity-100">Copiar Endpoint</button>
+                        <button onclick="copiarResultado('<%= ep.id %>')" class="text-[10px] underline opacity-60 hover:opacity-100">Copiar JSON</button>
+                    </div>
+                </div>
+                <pre id="result-<%= ep.id %>" class="bg-black/40 rounded p-3 text-[10px] text-white/70 min-h-[3rem]">Aquí aparecerá el resultado...</pre>
+            </div>
+        <% }) %>
+        </div>
+    </div>
+
+    <script>
+        const API_KEY = <%- JSON.stringify(apiKey) %>;
+
+        async function probar(id, path, param) {
+            const input = document.getElementById('input-' + id).value.trim();
+            const box = document.getElementById('result-' + id);
+            if (!input) { box.textContent = 'Escribe un valor primero.'; return; }
+            box.textContent = 'Cargando...';
+            const url = path + '?' + param + '=' + encodeURIComponent(input) + '&apikey=' + encodeURIComponent(API_KEY);
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+                box.textContent = JSON.stringify(data, null, 2);
+            } catch (e) {
+                box.textContent = 'Error: ' + e.message;
+            }
+        }
+
+        function copiarEndpoint(id, path, param) {
+            const input = document.getElementById('input-' + id).value.trim() || 'TU_VALOR';
+            const text = path + '?' + param + '=' + encodeURIComponent(input) + '&apikey=' + API_KEY;
+            navigator.clipboard.writeText(text);
+        }
+
+        function copiarResultado(id) {
+            const box = document.getElementById('result-' + id);
+            navigator.clipboard.writeText(box.textContent);
+        }
+    </script>
+</body>
+</html>
