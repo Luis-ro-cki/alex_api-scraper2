@@ -1,7 +1,6 @@
 import Fastify from 'fastify';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
-import yts from 'yt-search';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
@@ -17,6 +16,69 @@ import jwt from 'jsonwebtoken';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fastify = Fastify({ logger: false });
+
+// --- UTILIDADES PARA YOUTUBE (búsqueda propia + info de video) ---
+const YT_HEADERS = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36' };
+
+function esEnlace(texto) {
+    return /^https?:\/\//i.test(texto.trim());
+}
+
+function extraerIdYoutube(url) {
+    const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([a-zA-Z0-9_-]{11})/);
+    return m ? m[1] : null;
+}
+
+async function infoVideoYoutube(url) {
+    const id = extraerIdYoutube(url);
+    if (!id) throw new Error("Ese enlace no parece ser de YouTube.");
+    const { data } = await axios.get(`https://www.youtube.com/oembed`, { params: { url: `https://www.youtube.com/watch?v=${id}`, format: 'json' }, timeout: 15000 });
+    return [{
+        title: data.title,
+        videoId: id,
+        url: `https://youtube.com/watch?v=${id}`,
+        thumbnail: data.thumbnail_url,
+        autor: data.author_name
+    }];
+}
+
+async function buscarYoutube(query) {
+    const { data: html } = await axios.get('https://www.youtube.com/results', {
+        params: { search_query: query },
+        headers: YT_HEADERS,
+        timeout: 15000
+    });
+    const match = html.match(/var ytInitialData = (\{.*?\});<\/script>/s);
+    if (!match) throw new Error("No se pudo leer los resultados de YouTube en este momento. Intenta de nuevo.");
+
+    let data;
+    try { data = JSON.parse(match[1]); } catch { throw new Error("Error interpretando los resultados de YouTube."); }
+
+    const sections = data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
+    const results = [];
+    for (const section of sections) {
+        const items = section?.itemSectionRenderer?.contents || [];
+        for (const item of items) {
+            const vr = item.videoRenderer;
+            if (!vr) continue;
+            results.push({
+                title: vr.title?.runs?.[0]?.text || '',
+                videoId: vr.videoId,
+                url: 'https://youtube.com/watch?v=' + vr.videoId,
+                thumbnail: vr.thumbnail?.thumbnails?.slice(-1)[0]?.url || '',
+                duration: vr.lengthText?.simpleText || 'EN VIVO',
+                views: vr.viewCountText?.simpleText || (vr.viewCountText?.runs || []).map(r => r.text).join('') || '0',
+                publicado: vr.publishedTimeText?.simpleText || '',
+                autor: vr.ownerText?.runs?.[0]?.text || ''
+            });
+            if (results.length >= 10) break;
+        }
+        if (results.length >= 10) break;
+    }
+    if (results.length === 0) throw new Error("No se encontraron resultados para esa búsqueda.");
+    return results;
+}
+
 
 // --- CONFIGURACIÓN (variables de entorno, se ponen en Render, NUNCA en el código) ---
 const MONGODB_URI = process.env.MONGODB_URI; // ej: mongodb+srv://usuario:pass@cluster0.xxx.mongodb.net/alexScraperDB
@@ -64,50 +126,77 @@ fastify.register(rateLimit, { max: 100, timeWindow: '1 minute' });
 fastify.register(cookie);
 fastify.register(formbody);
 
+// --- CLIENTE HTTP CON TIMEOUT + REINTENTOS AUTOMÁTICOS ---
+const httpClient = axios.create({ timeout: 15000 });
+
+async function conReintentos(fn, intentos = 2) {
+    let ultimoError;
+    for (let i = 0; i <= intentos; i++) {
+        try {
+            return await fn();
+        } catch (e) {
+            ultimoError = e;
+            if (i < intentos) await new Promise(r => setTimeout(r, 800));
+        }
+    }
+    throw ultimoError;
+}
+
 // --- MOTORES DE EXTRACCIÓN (SCRAPERS REALES) ---
 const Scrapers = {
-    tiktok: async (url) => {
-        const { data } = await axios.post('https://www.tikwm.com/api/', new URLSearchParams({ url, hd: '1' }));
-        if (!data || data.code !== 0 || !data.data) throw new Error("No se pudo procesar el video de TikTok");
-        return data.data;
-    },
-    spotify: async (query) => {
-        let search;
+    tiktok: async (url) => conReintentos(async () => {
+        let data;
         try {
-            search = await yts(query);
+            ({ data } = await httpClient.post('https://www.tikwm.com/api/', new URLSearchParams({ url, hd: '1' })));
         } catch (e) {
-            throw new Error("El motor de búsqueda falló momentáneamente con ese término. Intenta de nuevo o usa otra frase.");
+            throw new Error("El servicio de TikTok no respondió a tiempo. Intenta de nuevo en unos segundos.");
         }
-        const results = (search && (search.videos || search.all)) || [];
-        const video = results.find(v => v && typeof v.title === 'string' && v.title.length > 0);
-        if (!video) throw new Error("No se encontraron resultados en Spotify Engine");
-        return {
-            title: video.title,
-            author: (video.author && video.author.name) || 'Desconocido',
-            thumbnail: video.thumbnail,
-            url: video.url,
-            timestamp: video.timestamp
-        };
-    },
-    facebook: async (url) => {
-        const { data } = await axios.post('https://getmyfb.com/process', new URLSearchParams({ urls: url, locale: 'en' }));
+        if (!data || data.code !== 0 || !data.data) throw new Error("No se pudo procesar ese video de TikTok. Verifica que el enlace sea correcto y público.");
+        return data.data;
+    }),
+    youtube: async (input) => conReintentos(async () => {
+        try {
+            if (esEnlace(input)) return await infoVideoYoutube(input);
+            return await buscarYoutube(input);
+        } catch (e) {
+            if (e.message) throw e;
+            throw new Error("YouTube no respondió a tiempo. Intenta de nuevo.");
+        }
+    }),
+    facebook: async (url) => conReintentos(async () => {
+        let data;
+        try {
+            ({ data } = await httpClient.post('https://getmyfb.com/process', new URLSearchParams({ urls: url, locale: 'en' })));
+        } catch (e) {
+            throw new Error("El servicio de Facebook no respondió a tiempo. Intenta de nuevo en unos segundos.");
+        }
         const $ = cheerio.load(data);
         const hd = $('.results-item-bundle a[download]').first().attr('href');
-        if (!hd) throw new Error("No se pudo extraer el video de Facebook");
+        if (!hd) throw new Error("No se pudo extraer ese video de Facebook. Verifica que sea público y el enlace sea correcto.");
         return { video_url: hd };
-    },
-    twitter: async (url) => {
-        const { data } = await axios.get(`https://api.vreden.my.id/api/twitter?url=${encodeURIComponent(url)}`);
-        if (!data || !data.result) throw new Error("No se pudo procesar el tweet");
+    }),
+    twitter: async (url) => conReintentos(async () => {
+        let data;
+        try {
+            ({ data } = await httpClient.get(`https://api.vreden.my.id/api/twitter?url=${encodeURIComponent(url)}`));
+        } catch (e) {
+            throw new Error("El servicio de Twitter/X no respondió a tiempo. Intenta de nuevo en unos segundos.");
+        }
+        if (!data || !data.result) throw new Error("No se pudo procesar ese tweet. Verifica que el enlace sea correcto y público.");
         return data.result;
-    },
-    pinterest: async (url) => {
-        const { data } = await axios.get(`https://www.expertsphp.com/facebook-video-downloader.php?url=${encodeURIComponent(url)}`);
+    }),
+    pinterest: async (url) => conReintentos(async () => {
+        let data;
+        try {
+            ({ data } = await httpClient.get(`https://www.expertsphp.com/facebook-video-downloader.php?url=${encodeURIComponent(url)}`));
+        } catch (e) {
+            throw new Error("El servicio de Pinterest no respondió a tiempo. Intenta de nuevo en unos segundos.");
+        }
         const $ = cheerio.load(data);
         const video = $('video source').attr('src') || $('img.img-fluid').attr('src');
-        if (!video) throw new Error("No se pudo extraer contenido de Pinterest");
+        if (!video) throw new Error("No se pudo extraer ese contenido de Pinterest. Verifica que el enlace sea correcto y público.");
         return { download_url: video };
-    },
+    }),
     gmaps: async (query) => {
         return { search: query, results: [{ name: "Alex Business", rating: "5.0", address: "Cyber Street 123", status: "Open" }] };
     }
@@ -255,7 +344,7 @@ fastify.get('/dashboard', { preHandler: requireLogin }, async (req, reply) => {
 // --- PLAYGROUND DE ENDPOINTS (probar los scrapers en vivo) ---
 const ENDPOINT_LIST = [
     { id: 'tiktok', name: 'TikTok Downloader', path: '/api/v1/download/tiktok', param: 'url', placeholder: 'https://vm.tiktok.com/xxxxx/', desc: 'Descarga video de TikTok sin marca de agua.' },
-    { id: 'spotify', name: 'Spotify / Búsqueda de audio', path: '/api/v1/download/spotify', param: 'url', placeholder: 'daddy yankee gasolina', desc: 'Busca metadata y audio por texto (usa motor de YouTube).' },
+    { id: 'youtube', name: 'YouTube Search / Info', path: '/api/v1/search/youtube', param: 'q', placeholder: 'daddy yankee gasolina  —  o pega un enlace de YouTube', desc: 'Busca videos por texto, o pega un enlace de YouTube directo para obtener su info.' },
     { id: 'facebook', name: 'Facebook Downloader', path: '/api/v1/download/facebook', param: 'url', placeholder: 'https://www.facebook.com/.../videos/...', desc: 'Descarga video de Facebook.' },
     { id: 'twitter', name: 'Twitter / X Downloader', path: '/api/v1/download/twitter', param: 'url', placeholder: 'https://twitter.com/user/status/12345', desc: 'Descarga video de un tweet.' },
     { id: 'pinterest', name: 'Pinterest Downloader', path: '/api/v1/download/pinterest', param: 'url', placeholder: 'https://pin.it/xxxxx', desc: 'Descarga contenido de Pinterest.' },
@@ -302,9 +391,9 @@ fastify.get('/api/v1/download/tiktok', async (req) => {
     if (!req.query.url) throw new Error("Falta el parámetro 'url'");
     return { status: true, creator: "Alex", url: req.query.url, result: await Scrapers.tiktok(req.query.url) };
 });
-fastify.get('/api/v1/download/spotify', async (req) => {
-    if (!req.query.url) throw new Error("Falta el parámetro 'url' (texto de búsqueda)");
-    return { status: true, creator: "Alex", query: req.query.url, result: await Scrapers.spotify(req.query.url) };
+fastify.get('/api/v1/search/youtube', async (req) => {
+    if (!req.query.q) throw new Error("Falta el parámetro 'q' (texto o enlace de YouTube)");
+    return { status: true, creator: "Alex", query: req.query.q, result: await Scrapers.youtube(req.query.q) };
 });
 fastify.get('/api/v1/download/facebook', async (req) => {
     if (!req.query.url) throw new Error("Falta el parámetro 'url'");
