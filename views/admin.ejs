@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>ALEX SCRAPER | ADMIN</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Geist+Mono&display=swap" rel="stylesheet">
+    <style>
+        body { background-color: #0c0e0e; color: #00f0ff; font-family: 'Geist Mono', monospace; }
+        .cyber-border { border: 1px solid rgba(0, 240, 255, 0.3); background: #111313; }
+        input, select { background: #0c0e0e; border: 1px solid rgba(0,240,255,0.3); color: #fff; }
+        table { font-size: 11px; }
+        th, td { padding: 8px; text-align: left; }
+    </style>
+</head>
+<body class="p-4 md:p-10">
+    <div class="max-w-5xl mx-auto">
+        <header class="flex justify-between items-center border-b border-[#00f0ff]/40 pb-6 mb-8">
+            <div>
+                <h1 class="text-2xl font-black italic">PANEL_DE_ADMIN</h1>
+                <p class="text-[10px] text-white/40 tracking-widest uppercase mt-1"><%= adminEmail %></p>
+            </div>
+            <div class="flex gap-2">
+                <a href="/dashboard" class="text-[10px] uppercase tracking-widest border border-[#00f0ff]/40 px-3 py-2 rounded hover:bg-[#00f0ff]/10">Mi cuenta</a>
+                <a href="/logout" class="text-[10px] uppercase tracking-widest text-red-400 border border-red-400/40 px-3 py-2 rounded hover:bg-red-400/10">Salir</a>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-3 gap-4 mb-8">
+            <div class="cyber-border rounded-lg p-4">
+                <p class="text-[10px] opacity-40 uppercase">Usuarios totales</p>
+                <h2 class="text-2xl font-bold mt-1"><%= usuarios.length %></h2>
+            </div>
+            <div class="cyber-border rounded-lg p-4">
+                <p class="text-[10px] opacity-40 uppercase">Premium activos</p>
+                <h2 class="text-2xl font-bold mt-1 text-yellow-400"><%= usuarios.filter(u => u.plan === 'premium').length %></h2>
+            </div>
+            <div class="cyber-border rounded-lg p-4">
+                <p class="text-[10px] opacity-40 uppercase">Plan gratis</p>
+                <h2 class="text-2xl font-bold mt-1"><%= usuarios.filter(u => u.plan !== 'premium').length %></h2>
+            </div>
+        </div>
+
+        <div class="cyber-border rounded-lg overflow-hidden">
+            <div class="p-4 bg-[#00f0ff]/5 border-b border-[#00f0ff]/20">
+                <h3 class="text-xs font-bold tracking-widest uppercase">Usuarios registrados</h3>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead>
+                        <tr class="opacity-40 border-b border-white/5">
+                            <th>Correo</th>
+                            <th>Plan</th>
+                            <th>Usadas</th>
+                            <th>Premium hasta</th>
+                            <th>API Key</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% usuarios.forEach(u => { %>
+                        <tr class="border-b border-white/5">
+                            <td class="text-white"><%= u.email %></td>
+                            <td class="<%= u.plan === 'premium' ? 'text-yellow-400' : 'text-[#00f0ff]' %> font-bold"><%= u.plan.toUpperCase() %></td>
+                            <td><%= u.requestsUsed %></td>
+                            <td class="opacity-60"><%= u.premiumUntil ? new Date(u.premiumUntil).toLocaleDateString('es-MX') : '-' %></td>
+                            <td class="opacity-40 break-all"><%= u.apiKey %></td>
+                            <td>
+                                <form method="POST" action="/admin/update-plan" class="flex gap-1 items-center">
+                                    <input type="hidden" name="userId" value="<%= u._id %>">
+                                    <select name="plan" class="text-[10px] p-1 rounded">
+                                        <option value="premium" <%= u.plan === 'premium' ? 'selected' : '' %>>Premium</option>
+                                        <option value="free" <%= u.plan !== 'premium' ? 'selected' : '' %>>Gratis</option>
+                                    </select>
+                                    <input type="number" name="dias" value="30" min="1" class="w-14 text-[10px] p-1 rounded" title="Días de premium">
+                                    <button type="submit" class="text-[10px] bg-[#00f0ff]/10 border border-[#00f0ff]/50 text-[#00f0ff] px-2 py-1 rounded hover:bg-[#00f0ff]/20">Guardar</button>
+                                </form>
+                            </td>
+                        </tr>
+                        <% }) %>
+                        <% if (usuarios.length === 0) { %>
+                        <tr><td colspan="6" class="text-center opacity-40 py-6">Todavía no hay usuarios registrados.</td></tr>
+                        <% } %>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
