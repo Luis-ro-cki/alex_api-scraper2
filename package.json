@@ -13,6 +13,7 @@
     "@fastify/view": "^8.2.0",
     "@fastify/cookie": "^9.3.1",
     "@fastify/formbody": "^7.4.0",
+    "@fastify/oauth2": "^7.8.0",
     "axios": "^1.6.2",
     "cheerio": "^1.0.0-rc.12",
     "ejs": "^3.1.9",
