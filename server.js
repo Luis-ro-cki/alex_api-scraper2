@@ -14,6 +14,7 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import ytdl from '@distube/ytdl-core';
+import oauthPlugin from '@fastify/oauth2';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fastify = Fastify({ logger: false });
@@ -104,7 +105,8 @@ if (!MONGODB_URI) {
 // --- MODELO DE USUARIO ---
 const userSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
-    passwordHash: { type: String, required: true },
+    passwordHash: { type: String, default: null }, // null si el usuario entró con Google/GitHub
+    authProvider: { type: String, enum: ['local', 'google', 'github'], default: 'local' },
     apiKey: { type: String, required: true, unique: true },
     plan: { type: String, enum: ['free', 'premium'], default: 'free' },
     requestsUsed: { type: Number, default: 0 },
@@ -127,6 +129,39 @@ fastify.register(cors, { origin: true });
 fastify.register(rateLimit, { max: 100, timeWindow: '1 minute' });
 fastify.register(cookie);
 fastify.register(formbody);
+
+// --- LOGIN SOCIAL: GOOGLE Y GITHUB ---
+const APP_URL = 'https://alex-api-scraper2-1.onrender.com';
+
+if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+    fastify.register(oauthPlugin, {
+        name: 'googleOAuth2',
+        scope: ['profile', 'email'],
+        credentials: {
+            client: { id: process.env.GOOGLE_CLIENT_ID, secret: process.env.GOOGLE_CLIENT_SECRET },
+            auth: oauthPlugin.GOOGLE_CONFIGURATION
+        },
+        startRedirectPath: '/auth/google',
+        callbackUri: `${APP_URL}/auth/google/callback`
+    });
+} else {
+    console.log('Login con Google desactivado: faltan GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET en Environment.');
+}
+
+if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
+    fastify.register(oauthPlugin, {
+        name: 'githubOAuth2',
+        scope: ['user:email'],
+        credentials: {
+            client: { id: process.env.GITHUB_CLIENT_ID, secret: process.env.GITHUB_CLIENT_SECRET },
+            auth: oauthPlugin.GITHUB_CONFIGURATION
+        },
+        startRedirectPath: '/auth/github',
+        callbackUri: `${APP_URL}/auth/github/callback`
+    });
+} else {
+    console.log('Login con GitHub desactivado: faltan GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET en Environment.');
+}
 
 // --- CLIENTE HTTP CON TIMEOUT + REINTENTOS AUTOMÁTICOS ---
 const httpClient = axios.create({ timeout: 15000 });
@@ -457,7 +492,10 @@ fastify.post('/register', async (req, reply) => {
 });
 
 // --- LOGIN ---
-fastify.get('/login', (req, reply) => reply.view('login.ejs', { error: null }));
+fastify.get('/login', (req, reply) => {
+    const errores = { google: 'No se pudo iniciar sesión con Google. Intenta de nuevo.', github: 'No se pudo iniciar sesión con GitHub. Intenta de nuevo.' };
+    reply.view('login.ejs', { error: errores[req.query.error] || null });
+});
 fastify.post('/login', async (req, reply) => {
     const { email, password } = req.body;
     const user = await User.findOne({ email: (email || '').toLowerCase() });
@@ -469,6 +507,48 @@ fastify.post('/login', async (req, reply) => {
     const token = jwt.sign({ uid: user._id.toString() }, JWT_SECRET, { expiresIn: '30d' });
     reply.setCookie('token', token, { path: '/', httpOnly: true, sameSite: 'lax', maxAge: 60 * 60 * 24 * 30 });
     reply.redirect('/dashboard');
+});
+
+async function iniciarSesionComo(email, reply) {
+    email = email.toLowerCase();
+    let user = await User.findOne({ email });
+    if (!user) {
+        const apiKey = 'ALEX-' + crypto.randomBytes(16).toString('hex').toUpperCase();
+        user = await User.create({ email, apiKey, authProvider: 'google' });
+    }
+    const token = jwt.sign({ uid: user._id.toString() }, JWT_SECRET, { expiresIn: '30d' });
+    reply.setCookie('token', token, { path: '/', httpOnly: true, sameSite: 'lax', maxAge: 60 * 60 * 24 * 30 });
+    reply.redirect('/dashboard');
+}
+
+fastify.get('/auth/google/callback', async (req, reply) => {
+    try {
+        const { token } = await fastify.googleOAuth2.getAccessTokenFromAuthorizationCodeFlow(req);
+        const { data: perfil } = await axios.get('https://www.googleapis.com/oauth2/v2/userinfo', {
+            headers: { Authorization: `Bearer ${token.access_token}` }
+        });
+        if (!perfil.email) throw new Error('Google no devolvió un correo.');
+        await iniciarSesionComo(perfil.email, reply);
+    } catch (e) {
+        reply.redirect('/login?error=google');
+    }
+});
+
+fastify.get('/auth/github/callback', async (req, reply) => {
+    try {
+        const { token } = await fastify.githubOAuth2.getAccessTokenFromAuthorizationCodeFlow(req);
+        const headers = { Authorization: `Bearer ${token.access_token}`, 'User-Agent': 'AlexScraperAPI' };
+        const { data: perfil } = await axios.get('https://api.github.com/user', { headers });
+        let email = perfil.email;
+        if (!email) {
+            const { data: emails } = await axios.get('https://api.github.com/user/emails', { headers });
+            email = (emails.find(e => e.primary) || emails[0])?.email;
+        }
+        if (!email) throw new Error('GitHub no devolvió un correo (verifica que tengas uno público o verificado).');
+        await iniciarSesionComo(email, reply);
+    } catch (e) {
+        reply.redirect('/login?error=github');
+    }
 });
 
 fastify.get('/logout', (req, reply) => {
