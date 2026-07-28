@@ -29,9 +29,29 @@
 
         <div class="cyber-border rounded-lg p-6 mb-6">
             <p class="text-[10px] opacity-40 uppercase mb-2">Tu API Key</p>
-            <p class="text-lg font-bold text-white break-all"><%= apiKey %></p>
-            <p class="text-[10px] opacity-30 mt-2">Úsala en tus peticiones: <code>?apikey=<%= apiKey %></code></p>
+            <div class="flex items-center gap-3 flex-wrap">
+                <p id="apikey-texto" class="text-lg font-bold text-white break-all" data-real="<%= apiKey %>" data-oculta="true">••••••••••••••••••••••••••••••••</p>
+                <button onclick="toggleApiKey()" id="btn-ver-key" class="text-[10px] uppercase tracking-widest border border-[#00f0ff]/40 px-3 py-1 rounded hover:bg-[#00f0ff]/10 whitespace-nowrap">Ver</button>
+            </div>
+            <p class="text-[10px] opacity-30 mt-2">Úsala en tus peticiones: <code>?apikey=TU_API_KEY</code> (dale a "Ver" para copiarla)</p>
         </div>
+
+        <script>
+            function toggleApiKey() {
+                const el = document.getElementById('apikey-texto');
+                const btn = document.getElementById('btn-ver-key');
+                const oculta = el.getAttribute('data-oculta') === 'true';
+                if (oculta) {
+                    el.textContent = el.getAttribute('data-real');
+                    el.setAttribute('data-oculta', 'false');
+                    btn.textContent = 'Ocultar';
+                } else {
+                    el.textContent = '••••••••••••••••••••••••••••••••';
+                    el.setAttribute('data-oculta', 'true');
+                    btn.textContent = 'Ver';
+                }
+            }
+        </script>
 
         <div class="grid grid-cols-2 gap-4 mb-6">
             <div class="cyber-border rounded-lg p-6">
