@@ -13,6 +13,7 @@ import formbody from '@fastify/formbody';
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import ytdl from '@distube/ytdl-core';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fastify = Fastify({ logger: false });
@@ -164,6 +165,48 @@ const Scrapers = {
             throw new Error("YouTube no respondió a tiempo. Intenta de nuevo.");
         }
     }),
+    youtubeMp4: async (input) => conReintentos(async () => {
+        const url = esEnlace(input) ? input : (await buscarYoutube(input))[0]?.url;
+        if (!url) throw new Error("No se encontró ningún video de YouTube con ese término.");
+        if (!ytdl.validateURL(url)) throw new Error("Ese enlace de YouTube no es válido.");
+        let info;
+        try {
+            info = await ytdl.getInfo(url);
+        } catch (e) {
+            throw new Error("YouTube no respondió a tiempo o bloqueó la petición. Intenta de nuevo en unos segundos.");
+        }
+        const formato = ytdl.chooseFormat(info.formats, { quality: 'highest', filter: 'videoandaudio' })
+            || ytdl.chooseFormat(info.formats, { quality: 'highest', filter: 'video' });
+        if (!formato) throw new Error("No se encontró un formato de video descargable para ese video.");
+        return {
+            titulo: info.videoDetails.title,
+            autor: info.videoDetails.author?.name,
+            duracion_segundos: info.videoDetails.lengthSeconds,
+            miniatura: info.videoDetails.thumbnails?.slice(-1)[0]?.url,
+            video_url: formato.url
+        };
+    }),
+    youtubeMp3: async (input) => conReintentos(async () => {
+        const url = esEnlace(input) ? input : (await buscarYoutube(input))[0]?.url;
+        if (!url) throw new Error("No se encontró ningún video de YouTube con ese término.");
+        if (!ytdl.validateURL(url)) throw new Error("Ese enlace de YouTube no es válido.");
+        let info;
+        try {
+            info = await ytdl.getInfo(url);
+        } catch (e) {
+            throw new Error("YouTube no respondió a tiempo o bloqueó la petición. Intenta de nuevo en unos segundos.");
+        }
+        const formato = ytdl.chooseFormat(info.formats, { quality: 'highestaudio', filter: 'audioonly' });
+        if (!formato) throw new Error("No se encontró un formato de audio descargable para ese video.");
+        return {
+            titulo: info.videoDetails.title,
+            autor: info.videoDetails.author?.name,
+            duracion_segundos: info.videoDetails.lengthSeconds,
+            miniatura: info.videoDetails.thumbnails?.slice(-1)[0]?.url,
+            formato: 'audio original de YouTube (no es un .mp3 convertido, pero se reproduce igual)',
+            audio_url: formato.url
+        };
+    }),
     facebook: async (url) => conReintentos(async () => {
         let data;
         try {
@@ -174,7 +217,14 @@ const Scrapers = {
         const $ = cheerio.load(data);
         const hd = $('.results-item-bundle a[download]').first().attr('href');
         if (!hd) throw new Error("No se pudo extraer ese video de Facebook. Verifica que sea público y el enlace sea correcto.");
-        return { video_url: hd };
+        const titulo = $('.results-item-text').first().text().trim() || $('meta[property="og:title"]').attr('content') || null;
+        const descripcion = $('meta[property="og:description"]').attr('content') || null;
+        return {
+            video_url: hd,
+            titulo: titulo || 'No disponible',
+            descripcion: descripcion || 'No disponible',
+            nota: 'Facebook no expone públicamente likes, comentarios, compartidos ni vistas sin autorización oficial de la página dueña del video.'
+        };
     }),
     twitter: async (url) => conReintentos(async () => {
         let data;
@@ -474,6 +524,8 @@ fastify.post('/admin/update-plan', { preHandler: requireAdmin }, async (req, rep
 const ENDPOINT_LIST = [
     { id: 'tiktok', name: 'TikTok Downloader', path: '/api/v1/download/tiktok', param: 'url', placeholder: 'https://vm.tiktok.com/xxxxx/', desc: 'Descarga video de TikTok sin marca de agua.' },
     { id: 'youtube', name: 'YouTube Search / Info', path: '/api/v1/search/youtube', param: 'q', placeholder: 'daddy yankee gasolina  —  o pega un enlace de YouTube', desc: 'Busca videos por texto, o pega un enlace de YouTube directo para obtener su info.' },
+    { id: 'youtubeMp4', name: 'YouTube MP4 (Video)', path: '/api/v1/download/youtube-mp4', param: 'q', placeholder: 'daddy yankee gasolina  —  o un enlace de YouTube', desc: 'Descarga el video en su mejor calidad, por texto o enlace.' },
+    { id: 'youtubeMp3', name: 'YouTube MP3 (Audio)', path: '/api/v1/download/youtube-mp3', param: 'q', placeholder: 'daddy yankee gasolina  —  o un enlace de YouTube', desc: 'Descarga solo el audio, por texto o enlace.' },
     { id: 'facebook', name: 'Facebook Downloader', path: '/api/v1/download/facebook', param: 'url', placeholder: 'https://www.facebook.com/.../videos/...', desc: 'Descarga video de Facebook.' },
     { id: 'twitter', name: 'Twitter / X Downloader', path: '/api/v1/download/twitter', param: 'url', placeholder: 'https://twitter.com/user/status/12345', desc: 'Descarga video de un tweet.' },
     { id: 'pinterest', name: 'Pinterest Downloader', path: '/api/v1/download/pinterest', param: 'url', placeholder: 'https://pin.it/xxxxx', desc: 'Descarga contenido de Pinterest.' },
@@ -524,6 +576,14 @@ fastify.get('/api/v1/download/tiktok', async (req) => {
 fastify.get('/api/v1/search/youtube', async (req) => {
     if (!req.query.q) throw new Error("Falta el parámetro 'q' (texto o enlace de YouTube)");
     return { status: true, creator: "Alex", query: req.query.q, result: await Scrapers.youtube(req.query.q) };
+});
+fastify.get('/api/v1/download/youtube-mp4', async (req) => {
+    if (!req.query.q) throw new Error("Falta el parámetro 'q' (texto o enlace de YouTube)");
+    return { status: true, creator: "Alex", query: req.query.q, result: await Scrapers.youtubeMp4(req.query.q) };
+});
+fastify.get('/api/v1/download/youtube-mp3', async (req) => {
+    if (!req.query.q) throw new Error("Falta el parámetro 'q' (texto o enlace de YouTube)");
+    return { status: true, creator: "Alex", query: req.query.q, result: await Scrapers.youtubeMp3(req.query.q) };
 });
 fastify.get('/api/v1/download/facebook', async (req) => {
     if (!req.query.url) throw new Error("Falta el parámetro 'url'");
