@@ -208,7 +208,8 @@ const Scrapers = {
         try {
             info = await ytdl.getInfo(url);
         } catch (e) {
-            throw new Error("YouTube no respondió a tiempo o bloqueó la petición. Intenta de nuevo en unos segundos.");
+            console.error("[YOUTUBE MP4] Error real:", e.message);
+            throw new Error(`YouTube bloqueó o falló la petición: ${e.message}`);
         }
         const formato = ytdl.chooseFormat(info.formats, { quality: 'highest', filter: 'videoandaudio' })
             || ytdl.chooseFormat(info.formats, { quality: 'highest', filter: 'video' });
@@ -229,7 +230,8 @@ const Scrapers = {
         try {
             info = await ytdl.getInfo(url);
         } catch (e) {
-            throw new Error("YouTube no respondió a tiempo o bloqueó la petición. Intenta de nuevo en unos segundos.");
+            console.error("[YOUTUBE MP3] Error real:", e.message);
+            throw new Error(`YouTube bloqueó o falló la petición: ${e.message}`);
         }
         const formato = ytdl.chooseFormat(info.formats, { quality: 'highestaudio', filter: 'audioonly' });
         if (!formato) throw new Error("No se encontró un formato de audio descargable para ese video.");
