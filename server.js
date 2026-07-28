@@ -84,6 +84,7 @@ async function buscarYoutube(query) {
 const MONGODB_URI = process.env.MONGODB_URI; // ej: mongodb+srv://usuario:pass@cluster0.xxx.mongodb.net/alexScraperDB
 const JWT_SECRET = process.env.JWT_SECRET || 'cambia-esto-en-produccion';
 const PAYPAL_BUSINESS_EMAIL = 'l29472954@gmail.com';
+const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'l29472954@gmail.com').toLowerCase();
 const PAYPAL_IPN_URL = 'https://ipnpb.paypal.com/cgi-bin/webscr'; // Live. Para pruebas: https://ipnpb.sandbox.paypal.com/cgi-bin/webscr
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -326,6 +327,14 @@ async function requireLogin(req, reply) {
     }
 }
 
+async function requireAdmin(req, reply) {
+    await requireLogin(req, reply);
+    if (reply.sent) return; // ya redirigió a /login
+    if (req.currentUser.email.toLowerCase() !== ADMIN_EMAIL) {
+        return reply.code(403).send({ status: false, message: "No tienes acceso a esta sección." });
+    }
+}
+
 // --- CONTROL DE PLANES (reset semanal / expiración premium) ---
 function refreshPlan(user) {
     const now = new Date();
@@ -431,8 +440,34 @@ fastify.get('/dashboard', { preHandler: requireLogin }, async (req, reply) => {
         limit,
         premiumUntil: user.premiumUntil,
         paypalEmail: PAYPAL_BUSINESS_EMAIL,
-        baseUrl: `${req.protocol}://${req.hostname}`
+        baseUrl: `${req.protocol}://${req.hostname}`,
+        esAdmin: user.email.toLowerCase() === ADMIN_EMAIL
     });
+});
+
+// --- PANEL DE ADMIN (solo el correo configurado en ADMIN_EMAIL puede entrar) ---
+fastify.get('/admin', { preHandler: requireAdmin }, async (req, reply) => {
+    const usuarios = await User.find({}).sort({ createdAt: -1 });
+    reply.view('admin.ejs', { usuarios, adminEmail: req.currentUser.email });
+});
+
+fastify.post('/admin/update-plan', { preHandler: requireAdmin }, async (req, reply) => {
+    const { userId, plan, dias } = req.body;
+    const user = await User.findById(userId);
+    if (user) {
+        if (plan === 'premium') {
+            const extra = (parseInt(dias, 10) || 30) * 24 * 60 * 60 * 1000;
+            user.plan = 'premium';
+            user.premiumUntil = new Date(Date.now() + extra);
+        } else {
+            user.plan = 'free';
+            user.premiumUntil = null;
+            user.requestsUsed = 0;
+            user.periodStart = new Date();
+        }
+        await user.save();
+    }
+    reply.redirect('/admin');
 });
 
 // --- PLAYGROUND DE ENDPOINTS (probar los scrapers en vivo) ---
