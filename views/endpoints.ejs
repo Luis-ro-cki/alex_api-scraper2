@@ -58,10 +58,12 @@
                     </div>
                 </div>
                 <pre id="result-<%= ep.id %>" class="bg-black/40 rounded p-3 text-[11px] text-white/70 min-h-[3rem]">Aquí aparecerá el resultado...</pre>
+                <div id="media-<%= ep.id %>" class="mt-1"></div>
             </div>
         <% }) %>
         </div>
     </div>
+
 
     <script>
         const API_KEY = <%- JSON.stringify(apiKey) %>;
@@ -69,16 +71,64 @@
         async function probar(id, path, param) {
             const input = document.getElementById('input-' + id).value.trim();
             const box = document.getElementById('result-' + id);
-            if (!input) { box.textContent = 'Escribe un valor primero.'; return; }
+            const mediaBox = document.getElementById('media-' + id);
+            mediaBox.innerHTML = '';
             box.textContent = 'Cargando...';
-            const url = path + '?' + param + '=' + encodeURIComponent(input) + '&apikey=' + encodeURIComponent(API_KEY);
+            const url = input
+                ? path + '?' + param + '=' + encodeURIComponent(input) + '&apikey=' + encodeURIComponent(API_KEY)
+                : path + '?apikey=' + encodeURIComponent(API_KEY);
             try {
                 const res = await fetch(url);
                 const data = await res.json();
                 box.textContent = JSON.stringify(data, null, 2);
+                mostrarMedia(mediaBox, data);
             } catch (e) {
                 box.textContent = 'Error: ' + e.message;
             }
+        }
+
+        function buscarMedia(obj, profundidad) {
+            if (!obj || typeof obj !== 'object' || profundidad > 3) return null;
+            const mapa = [
+                ['gif_url', 'gif'], ['video_url', 'video'], ['audio_url', 'audio'],
+                ['imagen_url', 'imagen'], ['imagen_qr', 'imagen'], ['media_url', 'imagen'],
+                ['miniatura', 'imagen'], ['thumbnail', 'imagen'], ['avatar', 'imagen']
+            ];
+            for (const [campo, tipo] of mapa) {
+                if (typeof obj[campo] === 'string' && obj[campo]) return { tipo, url: obj[campo] };
+            }
+            if (Array.isArray(obj.result) && obj.result.length) return buscarMedia(obj.result[0], profundidad + 1);
+            if (obj.result && typeof obj.result === 'object') return buscarMedia(obj.result, profundidad + 1);
+            return null;
+        }
+
+        function mostrarMedia(cont, data) {
+            const media = buscarMedia(data, 0);
+            if (!media) return;
+
+            let elemento;
+            if (media.tipo === 'video') {
+                elemento = document.createElement('video');
+                elemento.src = media.url; elemento.controls = true;
+            } else if (media.tipo === 'audio') {
+                elemento = document.createElement('audio');
+                elemento.src = media.url; elemento.controls = true;
+            } else {
+                elemento = document.createElement('img');
+                elemento.src = media.url;
+            }
+            elemento.className = 'w-full rounded mt-2 max-h-72 object-contain bg-black/30';
+            cont.appendChild(elemento);
+
+            const etiquetas = { gif: 'Descargar GIF', video: 'Descargar Video', audio: 'Descargar Audio', imagen: 'Descargar Imagen' };
+            const link = document.createElement('a');
+            link.href = media.url;
+            link.target = '_blank';
+            link.rel = 'noopener';
+            link.download = '';
+            link.textContent = etiquetas[media.tipo] || 'Descargar';
+            link.className = 'inline-block mt-2 text-[11px] bg-[#00f0ff]/10 border border-[#00f0ff]/50 text-[#00f0ff] px-3 py-2 rounded uppercase tracking-widest hover:bg-[#00f0ff]/20';
+            cont.appendChild(link);
         }
 
         function copiarTexto(texto, boton) {
