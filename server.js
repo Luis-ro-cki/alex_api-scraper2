@@ -359,7 +359,80 @@ const Scrapers = {
         }
         password = password.split('').sort(() => Math.random() - 0.5).join('');
         return { longitud, password };
-    }
+    },
+
+    animeQuote: async () => conReintentos(async () => {
+        let data;
+        try {
+            ({ data } = await httpClient.get('https://animechan.io/api/v1/quotes/random'));
+        } catch (e) {
+            throw new Error('El servicio de frases de anime no respondió. Intenta de nuevo.');
+        }
+        const q = data?.data || data;
+        if (!q?.content) throw new Error('No se pudo obtener una frase en este momento.');
+        return { frase: q.content, personaje: q.character?.name || 'Desconocido', anime: q.anime?.name || 'Desconocido' };
+    }),
+
+    animeReaccion: async (tipo) => conReintentos(async () => {
+        const valido = ['hug', 'pat', 'wave', 'smile', 'dance', 'cry', 'kiss', 'highfive', 'handhold', 'poke', 'bite', 'glomp', 'blush', 'wink', 'happy', 'cuddle', 'bonk', 'yeet', 'slap', 'kick', 'nom', 'bully', 'awoo', 'kill', 'lick', 'smug', 'cringe'];
+        const t = (tipo || 'hug').toLowerCase().trim();
+        if (!valido.includes(t)) throw new Error(`Tipo no válido. Usa uno de: ${valido.join(', ')}`);
+        let data;
+        try {
+            ({ data } = await httpClient.get(`https://api.waifu.pics/sfw/${t}`));
+        } catch (e) {
+            throw new Error('El servicio de reacciones no respondió. Intenta de nuevo.');
+        }
+        if (!data?.url) throw new Error('No se encontró una imagen para ese tipo.');
+        return { tipo: t, gif_url: data.url };
+    }),
+
+    animeImagen: async (tipo) => conReintentos(async () => {
+        const valido = ['waifu', 'neko', 'shinobu', 'megumin', 'bully', 'cuddle'];
+        const t = (tipo || 'waifu').toLowerCase().trim();
+        if (!valido.includes(t)) throw new Error(`Tipo no válido. Usa uno de: ${valido.join(', ')}`);
+        let data;
+        try {
+            ({ data } = await httpClient.get(`https://api.waifu.pics/sfw/${t}`));
+        } catch (e) {
+            throw new Error('El servicio de imágenes no respondió. Intenta de nuevo.');
+        }
+        if (!data?.url) throw new Error('No se encontró una imagen para ese tipo.');
+        return { tipo: t, imagen_url: data.url };
+    }),
+
+    ghibli: async (nombre) => conReintentos(async () => {
+        let data;
+        try {
+            ({ data } = await httpClient.get('https://ghibliapi.vercel.app/films'));
+        } catch (e) {
+            throw new Error('El servicio de Studio Ghibli no respondió. Intenta de nuevo.');
+        }
+        const termino = nombre.toLowerCase();
+        const pelicula = (data || []).find(f => f.title.toLowerCase().includes(termino));
+        if (!pelicula) throw new Error('No se encontró ninguna película de Studio Ghibli con ese nombre.');
+        return {
+            titulo: pelicula.title,
+            titulo_japones: pelicula.original_title,
+            director: pelicula.director,
+            año: pelicula.release_date,
+            sinopsis: pelicula.description,
+            puntuacion: pelicula.rt_score,
+            imagen: pelicula.image
+        };
+    }),
+
+    animeMeme: async () => conReintentos(async () => {
+        let data;
+        try {
+            ({ data } = await httpClient.get('https://www.reddit.com/r/wholesomeanimemes/random/.json', { headers: { 'User-Agent': 'AlexScraperAPI/1.0' } }));
+        } catch (e) {
+            throw new Error('El servicio de memes no respondió (puede estar temporalmente limitado). Intenta de nuevo en un momento.');
+        }
+        const post = data?.[0]?.data?.children?.[0]?.data;
+        if (!post) throw new Error('No se encontró ningún meme en este momento.');
+        return { titulo: post.title, imagen_url: post.url, autor: post.author, likes: post.ups };
+    })
 };
 
 // --- IDENTIFICADOR DE CONTENIDO (¿es video o audio, y de qué plataforma?) ---
@@ -688,7 +761,12 @@ const ENDPOINT_LIST = [
     { id: 'acortar', name: 'Acortador de URLs', path: '/api/v1/tools/acortar', param: 'q', placeholder: 'https://un-link-muy-largo.com/xyz123', desc: 'Acorta cualquier link largo.' },
     { id: 'traducir', name: 'Traductor de Texto', path: '/api/v1/tools/traducir', param: 'q', placeholder: 'hola amigo|en', desc: 'Traduce texto. Formato: texto|idioma_destino (ej: hola|en, hello|es).' },
     { id: 'clima', name: 'Clima Actual', path: '/api/v1/tools/clima', param: 'q', placeholder: 'Ciudad de México', desc: 'Clima en tiempo real de cualquier ciudad.' },
-    { id: 'password', name: 'Generador de Contraseñas', path: '/api/v1/tools/password', param: 'q', placeholder: '16  (longitud deseada)', desc: 'Genera una contraseña segura y aleatoria.' }
+    { id: 'password', name: 'Generador de Contraseñas', path: '/api/v1/tools/password', param: 'q', placeholder: '16  (longitud deseada)', desc: 'Genera una contraseña segura y aleatoria.' },
+    { id: 'animeFrase', name: 'Frase de Anime', path: '/api/v1/anime/frase', param: 'q', placeholder: '(no necesita nada, dale a Probar)', desc: 'Frase random con personaje y anime.' },
+    { id: 'animeReaccion', name: 'Reacción Anime (GIF)', path: '/api/v1/anime/reaccion', param: 'q', placeholder: 'hug, pat, wave, dance, cry, smile...', desc: 'GIF de reacción tipo anime, SFW.' },
+    { id: 'animeImagen', name: 'Imagen Anime (Waifu/Neko)', path: '/api/v1/anime/imagen', param: 'q', placeholder: 'waifu, neko, shinobu, megumin...', desc: 'Imagen bonita de anime, SFW.' },
+    { id: 'ghibli', name: 'Studio Ghibli Info', path: '/api/v1/anime/ghibli', param: 'q', placeholder: 'Totoro, Chihiro, Ponyo...', desc: 'Info de películas de Studio Ghibli.' },
+    { id: 'animeMeme', name: 'Meme de Anime', path: '/api/v1/anime/meme', param: 'q', placeholder: '(no necesita nada, dale a Probar)', desc: 'Meme random y sano de anime.' }
 ];
 
 fastify.get('/endpoints', { preHandler: requireLogin }, async (req, reply) => {
@@ -781,6 +859,22 @@ fastify.get('/api/v1/tools/clima', async (req) => {
 });
 fastify.get('/api/v1/tools/password', async (req) => {
     return { status: true, creator: "Alex", result: await Scrapers.generarPassword(req.query.q || '12') };
+});
+fastify.get('/api/v1/anime/frase', async (req) => {
+    return { status: true, creator: "Alex", result: await Scrapers.animeQuote() };
+});
+fastify.get('/api/v1/anime/reaccion', async (req) => {
+    return { status: true, creator: "Alex", tipo: req.query.q || 'hug', result: await Scrapers.animeReaccion(req.query.q) };
+});
+fastify.get('/api/v1/anime/imagen', async (req) => {
+    return { status: true, creator: "Alex", tipo: req.query.q || 'waifu', result: await Scrapers.animeImagen(req.query.q) };
+});
+fastify.get('/api/v1/anime/ghibli', async (req) => {
+    if (!req.query.q) throw new Error("Falta el parámetro 'q' (nombre de la película, ej: Totoro)");
+    return { status: true, creator: "Alex", query: req.query.q, result: await Scrapers.ghibli(req.query.q) };
+});
+fastify.get('/api/v1/anime/meme', async (req) => {
+    return { status: true, creator: "Alex", result: await Scrapers.animeMeme() };
 });
 
 // --- INICIO DEL SERVIDOR ---
