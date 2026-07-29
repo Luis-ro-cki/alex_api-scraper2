@@ -288,7 +288,78 @@ const Scrapers = {
     gmaps: async (query) => {
         return { search: query, results: [{ name: "Alex Business", rating: "5.0", address: "Cyber Street 123", status: "Open" }] };
     },
-    identificar: async (url) => conReintentos(() => identificarContenido(url))
+    identificar: async (url) => conReintentos(() => identificarContenido(url)),
+
+    qr: async (texto) => {
+        const url = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(texto)}`;
+        return { texto, imagen_qr: url };
+    },
+
+    acortar: async (url) => conReintentos(async () => {
+        let data;
+        try {
+            ({ data } = await httpClient.get('https://is.gd/create.php', { params: { format: 'json', url } }));
+        } catch (e) {
+            throw new Error('El servicio de acortar enlaces no respondió. Intenta de nuevo.');
+        }
+        if (data.errorcode) throw new Error(data.errormessage || 'No se pudo acortar ese link. Verifica que sea una URL válida.');
+        return { original: url, corto: data.shorturl };
+    }),
+
+    traducir: async (input) => conReintentos(async () => {
+        let texto = input, destino = 'en';
+        if (input.includes('|')) {
+            const partes = input.split('|');
+            texto = partes[0].trim();
+            destino = (partes[1] || 'en').trim();
+        }
+        let data;
+        try {
+            ({ data } = await httpClient.get('https://api.mymemory.translated.net/get', { params: { q: texto, langpair: `auto|${destino}` } }));
+        } catch (e) {
+            throw new Error('El servicio de traducción no respondió. Intenta de nuevo.');
+        }
+        const traduccion = data?.responseData?.translatedText;
+        if (!traduccion) throw new Error('No se pudo traducir ese texto. Verifica el formato: "texto|idioma", ej: "hola amigo|en".');
+        return { texto_original: texto, idioma_destino: destino, traduccion };
+    }),
+
+    clima: async (ciudad) => conReintentos(async () => {
+        let data;
+        try {
+            ({ data } = await httpClient.get(`https://wttr.in/${encodeURIComponent(ciudad)}`, { params: { format: 'j1' } }));
+        } catch (e) {
+            throw new Error('No se pudo obtener el clima de esa ciudad. Verifica el nombre.');
+        }
+        const actual = data?.current_condition?.[0];
+        if (!actual) throw new Error('No se encontró información de clima para esa ciudad.');
+        return {
+            ciudad,
+            temperatura_c: actual.temp_C,
+            sensacion_c: actual.FeelsLikeC,
+            descripcion: actual.lang_es?.[0]?.value || actual.weatherDesc?.[0]?.value,
+            humedad_porciento: actual.humidity,
+            viento_kmh: actual.windspeedKmph
+        };
+    }),
+
+    generarPassword: async (input) => {
+        const longitud = Math.min(Math.max(parseInt(input, 10) || 12, 6), 64);
+        const mayus = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        const minus = 'abcdefghijklmnopqrstuvwxyz';
+        const numeros = '0123456789';
+        const especiales = '!@#$%^&*()_+-=[]{}';
+        const todos = mayus + minus + numeros + especiales;
+        let password = mayus[Math.floor(Math.random() * mayus.length)]
+            + minus[Math.floor(Math.random() * minus.length)]
+            + numeros[Math.floor(Math.random() * numeros.length)]
+            + especiales[Math.floor(Math.random() * especiales.length)];
+        for (let i = password.length; i < longitud; i++) {
+            password += todos[Math.floor(Math.random() * todos.length)];
+        }
+        password = password.split('').sort(() => Math.random() - 0.5).join('');
+        return { longitud, password };
+    }
 };
 
 // --- IDENTIFICADOR DE CONTENIDO (¿es video o audio, y de qué plataforma?) ---
@@ -612,7 +683,12 @@ const ENDPOINT_LIST = [
     { id: 'twitter', name: 'Twitter / X Downloader', path: '/api/v1/download/twitter', param: 'url', placeholder: 'https://twitter.com/user/status/12345', desc: 'Descarga video de un tweet.' },
     { id: 'pinterest', name: 'Pinterest Downloader', path: '/api/v1/download/pinterest', param: 'url', placeholder: 'https://pin.it/xxxxx', desc: 'Descarga contenido de Pinterest.' },
     { id: 'gmaps', name: 'Google Maps Scraper', path: '/api/v1/scraper/gmaps', param: 'query', placeholder: 'restaurantes en CDMX', desc: 'Busca negocios en Google Maps.' },
-    { id: 'identify', name: 'Identificador de Contenido', path: '/api/v1/identify', param: 'url', placeholder: 'Enlace de TikTok, YouTube, Facebook, SoundCloud, Spotify...', desc: 'Identifica si un enlace es video o audio, y de qué plataforma es.' }
+    { id: 'identify', name: 'Identificador de Contenido', path: '/api/v1/identify', param: 'url', placeholder: 'Enlace de TikTok, YouTube, Facebook, SoundCloud, Spotify...', desc: 'Identifica si un enlace es video o audio, y de qué plataforma es.' },
+    { id: 'qr', name: 'Generador de código QR', path: '/api/v1/tools/qr', param: 'q', placeholder: 'https://mi-sitio.com  —  o cualquier texto', desc: 'Genera un código QR de cualquier texto o link.' },
+    { id: 'acortar', name: 'Acortador de URLs', path: '/api/v1/tools/acortar', param: 'q', placeholder: 'https://un-link-muy-largo.com/xyz123', desc: 'Acorta cualquier link largo.' },
+    { id: 'traducir', name: 'Traductor de Texto', path: '/api/v1/tools/traducir', param: 'q', placeholder: 'hola amigo|en', desc: 'Traduce texto. Formato: texto|idioma_destino (ej: hola|en, hello|es).' },
+    { id: 'clima', name: 'Clima Actual', path: '/api/v1/tools/clima', param: 'q', placeholder: 'Ciudad de México', desc: 'Clima en tiempo real de cualquier ciudad.' },
+    { id: 'password', name: 'Generador de Contraseñas', path: '/api/v1/tools/password', param: 'q', placeholder: '16  (longitud deseada)', desc: 'Genera una contraseña segura y aleatoria.' }
 ];
 
 fastify.get('/endpoints', { preHandler: requireLogin }, async (req, reply) => {
@@ -686,6 +762,25 @@ fastify.get('/api/v1/scraper/gmaps', async (req) => {
 fastify.get('/api/v1/identify', async (req) => {
     if (!req.query.url) throw new Error("Falta el parámetro 'url'");
     return { status: true, creator: "Alex", url: req.query.url, result: await Scrapers.identificar(req.query.url) };
+});
+fastify.get('/api/v1/tools/qr', async (req) => {
+    if (!req.query.q) throw new Error("Falta el parámetro 'q' (el texto o link para el QR)");
+    return { status: true, creator: "Alex", query: req.query.q, result: await Scrapers.qr(req.query.q) };
+});
+fastify.get('/api/v1/tools/acortar', async (req) => {
+    if (!req.query.q) throw new Error("Falta el parámetro 'q' (la URL a acortar)");
+    return { status: true, creator: "Alex", query: req.query.q, result: await Scrapers.acortar(req.query.q) };
+});
+fastify.get('/api/v1/tools/traducir', async (req) => {
+    if (!req.query.q) throw new Error("Falta el parámetro 'q', formato: texto|idioma (ej: hola amigo|en)");
+    return { status: true, creator: "Alex", query: req.query.q, result: await Scrapers.traducir(req.query.q) };
+});
+fastify.get('/api/v1/tools/clima', async (req) => {
+    if (!req.query.q) throw new Error("Falta el parámetro 'q' (nombre de la ciudad)");
+    return { status: true, creator: "Alex", query: req.query.q, result: await Scrapers.clima(req.query.q) };
+});
+fastify.get('/api/v1/tools/password', async (req) => {
+    return { status: true, creator: "Alex", result: await Scrapers.generarPassword(req.query.q || '12') };
 });
 
 // --- INICIO DEL SERVIDOR ---
