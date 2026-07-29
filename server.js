@@ -315,12 +315,14 @@ const Scrapers = {
         }
         let data;
         try {
-            ({ data } = await httpClient.get('https://api.mymemory.translated.net/get', { params: { q: texto, langpair: `auto|${destino}` } }));
+            ({ data } = await httpClient.get('https://translate.googleapis.com/translate_a/single', {
+                params: { client: 'gtx', sl: 'auto', tl: destino, dt: 't', q: texto }
+            }));
         } catch (e) {
             console.error('[TRADUCIR] Error real:', e.response?.status, e.message);
             throw new Error(`El servicio de traducción no respondió: ${e.message}`);
         }
-        const traduccion = data?.responseData?.translatedText;
+        const traduccion = Array.isArray(data?.[0]) ? data[0].map(seg => seg[0]).join('') : null;
         if (!traduccion) throw new Error('No se pudo traducir ese texto. Verifica el formato: "texto|idioma", ej: "hola amigo|en".');
         return { texto_original: texto, idioma_destino: destino, traduccion };
     }),
@@ -375,33 +377,35 @@ const Scrapers = {
     }),
 
     animeReaccion: async (tipo) => conReintentos(async () => {
-        const valido = ['hug', 'pat', 'wave', 'smile', 'dance', 'cry', 'kiss', 'highfive', 'handhold', 'poke', 'bite', 'glomp', 'blush', 'wink', 'happy', 'cuddle', 'bonk', 'yeet', 'slap', 'kick', 'nom', 'bully', 'awoo', 'kill', 'lick', 'smug', 'cringe'];
+        const valido = ['baka', 'bite', 'blush', 'bored', 'cry', 'cuddle', 'dance', 'facepalm', 'feed', 'handhold', 'happy', 'highfive', 'hug', 'kick', 'kiss', 'laugh', 'pat', 'poke', 'pout', 'punch', 'shrug', 'slap', 'sleep', 'smile', 'smug', 'stare', 'think', 'thumbsup', 'tickle', 'wave', 'wink', 'yeet'];
         const t = (tipo || 'hug').toLowerCase().trim();
         if (!valido.includes(t)) throw new Error(`Tipo no válido. Usa uno de: ${valido.join(', ')}`);
         let data;
         try {
-            ({ data } = await httpClient.get(`https://api.waifu.pics/sfw/${t}`));
+            ({ data } = await httpClient.get(`https://nekos.best/api/v2/${t}`));
         } catch (e) {
             console.error('[REACCION] Error real:', e.response?.status, e.message);
             throw new Error(`El servicio de reacciones no respondió: ${e.message}`);
         }
-        if (!data?.url) throw new Error('No se encontró una imagen para ese tipo.');
-        return { tipo: t, gif_url: data.url };
+        const resultado = data?.results?.[0];
+        if (!resultado?.url) throw new Error('No se encontró una imagen para ese tipo.');
+        return { tipo: t, gif_url: resultado.url, anime: resultado.anime_name || null };
     }),
 
     animeImagen: async (tipo) => conReintentos(async () => {
-        const valido = ['waifu', 'neko', 'shinobu', 'megumin', 'bully', 'cuddle'];
+        const valido = ['waifu', 'maid', 'uniform', 'oldies'];
         const t = (tipo || 'waifu').toLowerCase().trim();
         if (!valido.includes(t)) throw new Error(`Tipo no válido. Usa uno de: ${valido.join(', ')}`);
         let data;
         try {
-            ({ data } = await httpClient.get(`https://api.waifu.pics/sfw/${t}`));
+            ({ data } = await httpClient.get('https://api.waifu.im/search', { params: { included_tags: t, is_nsfw: false } }));
         } catch (e) {
             console.error('[ANIME IMAGEN] Error real:', e.response?.status, e.message);
             throw new Error(`El servicio de imágenes no respondió: ${e.message}`);
         }
-        if (!data?.url) throw new Error('No se encontró una imagen para ese tipo.');
-        return { tipo: t, imagen_url: data.url };
+        const img = data?.images?.[0];
+        if (!img?.url) throw new Error('No se encontró una imagen para ese tipo.');
+        return { tipo: t, imagen_url: img.url };
     }),
 
     ghibli: async (nombre) => conReintentos(async () => {
@@ -767,7 +771,7 @@ const ENDPOINT_LIST = [
     { id: 'password', name: 'Generador de Contraseñas', path: '/api/v1/tools/password', param: 'q', placeholder: '16  (longitud deseada)', desc: 'Genera una contraseña segura y aleatoria.' },
     { id: 'animeFrase', name: 'Frase de Anime', path: '/api/v1/anime/frase', param: 'q', placeholder: '(no necesita nada, dale a Probar)', desc: 'Frase random con personaje y anime.' },
     { id: 'animeReaccion', name: 'Reacción Anime (GIF)', path: '/api/v1/anime/reaccion', param: 'q', placeholder: 'hug, pat, wave, dance, cry, smile...', desc: 'GIF de reacción tipo anime, SFW.' },
-    { id: 'animeImagen', name: 'Imagen Anime (Waifu/Neko)', path: '/api/v1/anime/imagen', param: 'q', placeholder: 'waifu, neko, shinobu, megumin...', desc: 'Imagen bonita de anime, SFW.' },
+    { id: 'animeImagen', name: 'Imagen Anime (Waifu)', path: '/api/v1/anime/imagen', param: 'q', placeholder: 'waifu, maid, uniform, oldies', desc: 'Imagen bonita de anime, SFW.' },
     { id: 'ghibli', name: 'Studio Ghibli Info', path: '/api/v1/anime/ghibli', param: 'q', placeholder: 'Totoro, Chihiro, Ponyo...', desc: 'Info de películas de Studio Ghibli.' },
     { id: 'animeMeme', name: 'Meme de Anime', path: '/api/v1/anime/meme', param: 'q', placeholder: '(no necesita nada, dale a Probar)', desc: 'Meme random y sano de anime.' }
 ];
