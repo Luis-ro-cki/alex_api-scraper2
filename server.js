@@ -373,7 +373,10 @@ const Scrapers = {
             throw new Error(`El servicio de frases de anime no respondió: ${e.message}`);
         }
         const q = data?.data || data;
-        if (!q?.content) throw new Error('No se pudo obtener una frase en este momento.');
+        if (!q?.content) {
+            console.error('[ANIME QUOTE] Respuesta inesperada:', JSON.stringify(data).slice(0, 300));
+            throw new Error('No se pudo obtener una frase en este momento.');
+        }
         return { frase: q.content, personaje: q.character?.name || 'Desconocido', anime: q.anime?.name || 'Desconocido' };
     }),
 
@@ -405,7 +408,10 @@ const Scrapers = {
             throw new Error(`El servicio de imágenes no respondió: ${e.message}`);
         }
         const img = data?.images?.[0];
-        if (!img?.url) throw new Error('No se encontró una imagen para ese tipo.');
+        if (!img?.url) {
+            console.error('[ANIME IMAGEN] Respuesta inesperada:', JSON.stringify(data).slice(0, 300));
+            throw new Error('No se encontró una imagen para ese tipo.');
+        }
         return { tipo: t, imagen_url: img.url };
     }),
 
@@ -433,14 +439,13 @@ const Scrapers = {
     animeMeme: async () => conReintentos(async () => {
         let data;
         try {
-            ({ data } = await httpClient.get('https://www.reddit.com/r/wholesomeanimemes/random/.json', { headers: { 'User-Agent': 'AlexScraperAPI/1.0' } }));
+            ({ data } = await httpClient.get('https://meme-api.com/gimme/wholesomeanimemes'));
         } catch (e) {
             console.error('[ANIME MEME] Error real:', e.response?.status, e.message);
             throw new Error(`El servicio de memes no respondió: ${e.message}`);
         }
-        const post = data?.[0]?.data?.children?.[0]?.data;
-        if (!post) throw new Error('No se encontró ningún meme en este momento.');
-        return { titulo: post.title, imagen_url: post.url, autor: post.author, likes: post.ups };
+        if (!data?.url) throw new Error('No se encontró ningún meme en este momento.');
+        return { titulo: data.title, imagen_url: data.url, autor: data.author, likes: data.ups };
     })
 };
 
