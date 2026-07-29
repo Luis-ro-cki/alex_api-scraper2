@@ -369,7 +369,8 @@ const Scrapers = {
         try {
             ({ data } = await httpClient.get('https://animechan.io/api/v1/quotes/random'));
         } catch (e) {
-            throw new Error('El servicio de frases de anime no respondió. Intenta de nuevo.');
+            console.error('[ANIME QUOTE] Error real:', e.response?.status, e.message);
+            throw new Error(`El servicio de frases de anime no respondió: ${e.message}`);
         }
         const q = data?.data || data;
         if (!q?.content) throw new Error('No se pudo obtener una frase en este momento.');
@@ -434,7 +435,8 @@ const Scrapers = {
         try {
             ({ data } = await httpClient.get('https://www.reddit.com/r/wholesomeanimemes/random/.json', { headers: { 'User-Agent': 'AlexScraperAPI/1.0' } }));
         } catch (e) {
-            throw new Error('El servicio de memes no respondió (puede estar temporalmente limitado). Intenta de nuevo en un momento.');
+            console.error('[ANIME MEME] Error real:', e.response?.status, e.message);
+            throw new Error(`El servicio de memes no respondió: ${e.message}`);
         }
         const post = data?.[0]?.data?.children?.[0]?.data;
         if (!post) throw new Error('No se encontró ningún meme en este momento.');
