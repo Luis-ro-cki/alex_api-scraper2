@@ -317,7 +317,8 @@ const Scrapers = {
         try {
             ({ data } = await httpClient.get('https://api.mymemory.translated.net/get', { params: { q: texto, langpair: `auto|${destino}` } }));
         } catch (e) {
-            throw new Error('El servicio de traducción no respondió. Intenta de nuevo.');
+            console.error('[TRADUCIR] Error real:', e.response?.status, e.message);
+            throw new Error(`El servicio de traducción no respondió: ${e.message}`);
         }
         const traduccion = data?.responseData?.translatedText;
         if (!traduccion) throw new Error('No se pudo traducir ese texto. Verifica el formato: "texto|idioma", ej: "hola amigo|en".');
@@ -381,7 +382,8 @@ const Scrapers = {
         try {
             ({ data } = await httpClient.get(`https://api.waifu.pics/sfw/${t}`));
         } catch (e) {
-            throw new Error('El servicio de reacciones no respondió. Intenta de nuevo.');
+            console.error('[REACCION] Error real:', e.response?.status, e.message);
+            throw new Error(`El servicio de reacciones no respondió: ${e.message}`);
         }
         if (!data?.url) throw new Error('No se encontró una imagen para ese tipo.');
         return { tipo: t, gif_url: data.url };
@@ -395,7 +397,8 @@ const Scrapers = {
         try {
             ({ data } = await httpClient.get(`https://api.waifu.pics/sfw/${t}`));
         } catch (e) {
-            throw new Error('El servicio de imágenes no respondió. Intenta de nuevo.');
+            console.error('[ANIME IMAGEN] Error real:', e.response?.status, e.message);
+            throw new Error(`El servicio de imágenes no respondió: ${e.message}`);
         }
         if (!data?.url) throw new Error('No se encontró una imagen para ese tipo.');
         return { tipo: t, imagen_url: data.url };
