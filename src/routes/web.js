@@ -203,6 +203,7 @@ export function registerWebRoutes(fastify) {
     { id: 'youtube', name: 'YouTube Search / Info', path: '/api/v1/search/youtube', param: 'q', placeholder: 'daddy yankee gasolina — o pega un enlace de YouTube', desc: 'Busca videos por texto, o pega un enlace de YouTube directo.' },
     { id: 'youtubeMp4', name: 'YouTube MP4 (Video)', path: '/api/v1/download/youtube-mp4', param: 'q', placeholder: 'daddy yankee gasolina', desc: 'Descarga el video en su mejor calidad.' },
     { id: 'youtubeMp3', name: 'YouTube MP3 (Audio)', path: '/api/v1/download/youtube-mp3', param: 'q', placeholder: 'daddy yankee gasolina', desc: 'Descarga solo el audio.' },
+    { id: 'spotify', name: 'Spotify Downloader', path: '/api/v1/download/spotify', param: 'url', placeholder: 'https://open.spotify.com/track/...', desc: 'Descarga canciones de Spotify en MP3 320kbps.' },
     { id: 'facebook', name: 'Facebook Downloader', path: '/api/v1/download/facebook', param: 'url', placeholder: 'https://www.facebook.com/.../videos/...', desc: 'Descarga video de Facebook.' },
     { id: 'twitter', name: 'Twitter / X Downloader', path: '/api/v1/download/twitter', param: 'url', placeholder: 'https://twitter.com/user/status/12345', desc: 'Descarga video de un tweet.' },
     { id: 'pinterest', name: 'Pinterest Downloader', path: '/api/v1/download/pinterest', param: 'url', placeholder: 'https://pin.it/xxxxx', desc: 'Descarga contenido de Pinterest.' },
