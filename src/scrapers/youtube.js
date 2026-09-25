@@ -6,15 +6,6 @@ const YT_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36'
 };
 
-// Instancias de Piped (fallbacks en caso de que una falle)
-const PIPED_INSTANCES = [
-  'https://pipedapi.kavin.rocks',
-  'https://pipedapi.adminforge.de',
-  'https://api.piped.projectsegfau.lt',
-  'https://pipedapi.in.projectsegfau.lt',
-  'https://pipedapi.leptons.xyz'
-];
-
 /**
  * Verifica si un texto es una URL
  */
@@ -31,32 +22,31 @@ function extraerIdYoutube(url) {
 }
 
 /**
- * Obtiene info de video usando Piped API (con fallback entre instancias)
+ * Obtiene info básica de video de YouTube (oEmbed)
  */
-async function obtenerInfoPiped(videoId) {
-  for (const instancia of PIPED_INSTANCES) {
-    try {
-      const { data } = await axios.get(`${instancia}/streams/${videoId}`, {
-        timeout: 15000
-      });
-      
-      if (data && data.title) {
-        return {
-          ...data,
-          instanciaUsada: instancia
-        };
-      }
-    } catch (e) {
-      // Esta instancia falló, probar la siguiente
-      continue;
-    }
-  }
+async function infoVideoYoutube(url) {
+  const id = extraerIdYoutube(url);
+  if (!id) throw new Error("Ese enlace no parece ser de YouTube.");
   
-  throw new Error('Todas las instancias de Piped fallaron. Intenta de nuevo en unos segundos.');
+  const { data } = await axios.get('https://www.youtube.com/oembed', {
+    params: { 
+      url: `https://www.youtube.com/watch?v=${id}`, 
+      format: 'json' 
+    },
+    timeout: 15000
+  });
+  
+  return [{
+    title: data.title,
+    videoId: id,
+    url: `https://youtube.com/watch?v=${id}`,
+    thumbnail: data.thumbnail_url,
+    autor: data.author_name
+  }];
 }
 
 /**
- * Busca videos en YouTube por texto (método original - sigue funcionando)
+ * Busca videos en YouTube por texto
  */
 async function buscarYoutube(query) {
   const { data: html } = await axios.get('https://www.youtube.com/results', {
@@ -107,21 +97,48 @@ async function buscarYoutube(query) {
 }
 
 /**
- * Obtiene información de un video de YouTube (info básica)
+ * Descarga usando Cobalt.tools API (muy estable)
  */
-async function infoVideoYoutube(url) {
-  const id = extraerIdYoutube(url);
-  if (!id) throw new Error("Ese enlace no parece ser de YouTube.");
+async function descargarConCobalt(url, formato = 'mp4') {
+  const cobaltUrls = [
+    'https://api.cobalt.tools/api/json',
+    'https://co.wuk.sh/api/json'
+  ];
   
-  const info = await obtenerInfoPiped(id);
+  for (const apiUrl of cobaltUrls) {
+    try {
+      const { data } = await axios.post(apiUrl, {
+        url: url,
+        vCodec: 'h264',
+        vQuality: '720',
+        aFormat: 'mp3',
+        isAudioOnly: formato === 'mp3'
+      }, {
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000
+      });
+      
+      if (data.status === 'stream' || data.status === 'redirect') {
+        return {
+          url: data.url,
+          filename: data.filename || 'video',
+          status: 'success'
+        };
+      }
+      
+      if (data.status === 'error') {
+        throw new Error(data.text || 'Error en Cobalt');
+      }
+    } catch (e) {
+      // Esta API falló, probar la siguiente
+      continue;
+    }
+  }
   
-  return [{
-    title: info.title,
-    videoId: id,
-    url: `https://youtube.com/watch?v=${id}`,
-    thumbnail: info.thumbnailUrl || info.thumbnail,
-    autor: info.uploader || info.uploaderName || 'Desconocido'
-  }];
+  throw new Error('No se pudo descargar el video. Intenta de nuevo en unos segundos.');
 }
 
 /**
@@ -142,87 +159,64 @@ export async function scraperYoutube(input) {
 }
 
 /**
- * Export: Descarga de video YouTube (MP4) - USA PIPED API
+ * Export: Descarga de video YouTube (MP4) - USA COBALT
  */
 export async function scraperYoutubeMp4(input) {
   return conReintentos(async () => {
-    // Obtener videoId desde URL o búsqueda
-    let videoId = null;
+    // Obtener URL completa
+    let url = input;
     
-    if (esEnlace(input)) {
-      videoId = extraerIdYoutube(input);
-      if (!videoId) throw new Error("Ese enlace de YouTube no es válido.");
-    } else {
+    if (!esEnlace(input)) {
       const resultados = await buscarYoutube(input);
-      videoId = resultados[0]?.videoId;
-      if (!videoId) throw new Error("No se encontró ningún video de YouTube con ese término.");
+      url = resultados[0]?.url;
+      if (!url) throw new Error("No se encontró ningún video de YouTube con ese término.");
     }
     
-    // Obtener info completa desde Piped
-    const info = await obtenerInfoPiped(videoId);
+    // Obtener info básica primero
+    const info = await infoVideoYoutube(url);
+    const videoInfo = info[0];
     
-    // Buscar el mejor formato de video con audio
-    const videoStream = info.videoStreams?.find(s => 
-      s.videoOnly === false && 
-      s.mimeType?.includes('video') &&
-      (s.quality?.includes('720') || s.quality?.includes('480') || s.quality?.includes('360'))
-    ) || info.videoStreams?.find(s => s.videoOnly === false) 
-      || info.videoStreams?.[0];
-    
-    if (!videoStream?.url) {
-      throw new Error("No se encontró un formato de video descargable.");
-    }
+    // Descargar usando Cobalt
+    const descarga = await descargarConCobalt(url, 'mp4');
     
     return {
-      titulo: info.title,
-      autor: info.uploader || info.uploaderName || 'Desconocido',
-      duracion_segundos: info.duration || 0,
-      miniatura: info.thumbnailUrl || info.thumbnail,
-      calidad: videoStream.quality || 'Desconocida',
-      video_url: videoStream.url
+      titulo: videoInfo.title,
+      autor: videoInfo.autor,
+      miniatura: videoInfo.thumbnail,
+      video_url: descarga.url,
+      nota: 'URL de descarga directa (puede expirar en unas horas)'
     };
   });
 }
 
 /**
- * Export: Descarga de audio YouTube (MP3) - USA PIPED API
+ * Export: Descarga de audio YouTube (MP3) - USA COBALT
  */
 export async function scraperYoutubeMp3(input) {
   return conReintentos(async () => {
-    // Obtener videoId desde URL o búsqueda
-    let videoId = null;
+    // Obtener URL completa
+    let url = input;
     
-    if (esEnlace(input)) {
-      videoId = extraerIdYoutube(input);
-      if (!videoId) throw new Error("Ese enlace de YouTube no es válido.");
-    } else {
+    if (!esEnlace(input)) {
       const resultados = await buscarYoutube(input);
-      videoId = resultados[0]?.videoId;
-      if (!videoId) throw new Error("No se encontró ningún video de YouTube con ese término.");
+      url = resultados[0]?.url;
+      if (!url) throw new Error("No se encontró ningún video de YouTube con ese término.");
     }
     
-    // Obtener info completa desde Piped
-    const info = await obtenerInfoPiped(videoId);
+    // Obtener info básica primero
+    const info = await infoVideoYoutube(url);
+    const videoInfo = info[0];
     
-    // Buscar el mejor formato de audio
-    const audioStream = info.audioStreams?.find(s => 
-      s.mimeType?.includes('audio') && 
-      (s.quality?.includes('128') || s.quality?.includes('192') || s.quality?.includes('256'))
-    ) || info.audioStreams?.find(s => s.mimeType?.includes('audio'))
-      || info.audioStreams?.[0];
-    
-    if (!audioStream?.url) {
-      throw new Error("No se encontró un formato de audio descargable.");
-    }
+    // Descargar usando Cobalt (solo audio)
+    const descarga = await descargarConCobalt(url, 'mp3');
     
     return {
-      titulo: info.title,
-      autor: info.uploader || info.uploaderName || 'Desconocido',
-      duracion_segundos: info.duration || 0,
-      miniatura: info.thumbnailUrl || info.thumbnail,
-      calidad: audioStream.quality || 'Desconocida',
-      formato: audioStream.mimeType || 'audio/webm',
-      audio_url: audioStream.url
+      titulo: videoInfo.title,
+      autor: videoInfo.autor,
+      miniatura: videoInfo.thumbnail,
+      formato: 'audio/mp3',
+      audio_url: descarga.url,
+      nota: 'URL de descarga directa (puede expirar en unas horas)'
     };
   });
 }
