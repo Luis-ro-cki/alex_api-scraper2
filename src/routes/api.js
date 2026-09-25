@@ -1,4 +1,5 @@
 // src/routes/api.js
+
 import axios from 'axios';
 import { User } from '../models/User.js';
 import { config } from '../config.js';
@@ -6,6 +7,7 @@ import { validateApiKey } from '../middleware/auth.js';
 import { withCache } from '../utils/cache.js';
 import { scraperTiktok, scraperFacebook, scraperTwitter, scraperPinterest } from '../scrapers/social.js';
 import { scraperYoutube, scraperYoutubeMp4, scraperYoutubeMp3 } from '../scrapers/youtube.js';
+import { scraperSpotify } from '../scrapers/spotify.js';
 import { scraperGmaps, scraperIdentificar } from '../scrapers/identify.js';
 import { scraperQR, scraperAcortar, scraperTraducir, scraperClima, scraperGenerarPassword } from '../scrapers/tools.js';
 import { scraperAnimeQuote, scraperAnimeReaccion, scraperAnimeImagen, scraperGhibli, scraperAnimeMeme } from '../scrapers/anime.js';
@@ -78,6 +80,13 @@ export function registerApiRoutes(fastify) {
     if (!req.query.q) throw new Error("Falta el parámetro 'q'");
     const result = await withCache(`ytmp3:${req.query.q}`, () => scraperYoutubeMp3(req.query.q), 300);
     return { status: true, creator: "Alex", query: req.query.q, result };
+  });
+
+  // Spotify (NUEVO)
+  fastify.get('/api/v1/download/spotify', async (req) => {
+    if (!req.query.url) throw new Error("Falta el parámetro 'url'");
+    const result = await withCache(`spotify:${req.query.url}`, () => scraperSpotify(req.query.url), 600);
+    return { status: true, creator: "Alex", url: req.query.url, result };
   });
 
   // Facebook
