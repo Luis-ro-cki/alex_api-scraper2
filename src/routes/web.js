@@ -1,4 +1,5 @@
 // src/routes/web.js
+
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
@@ -9,9 +10,16 @@ import { requireLogin, requireAdmin } from '../middleware/auth.js';
 import { generateApiKey, formatUptime } from '../utils/helpers.js';
 
 export function registerWebRoutes(fastify) {
+
+  // Keys estáticas de admin (para el portal público)
+  const ADMIN_KEYS = {
+    "ALEX-MASTER-999": { plan: "ADMIN", used: 0, limit: 999999 }
+  };
+
   // Página principal
   fastify.get('/', (req, reply) => {
     reply.view('portal.ejs', {
+      keys: ADMIN_KEYS,
       activeScrapers: 20,
       avgLatency: 0,
       uptime: formatUptime(process.uptime())
@@ -25,21 +33,17 @@ export function registerWebRoutes(fastify) {
 
   fastify.post('/register', async (req, reply) => {
     const { email, password } = req.body;
-    
     if (!email || !password || password.length < 6) {
       return reply.view('register.ejs', {
         error: 'Correo inválido o contraseña muy corta (mínimo 6 caracteres).'
       });
     }
-    
     const existing = await User.findOne({ email: email.toLowerCase() });
     if (existing) {
       return reply.view('register.ejs', { error: 'Ese correo ya está registrado.' });
     }
-    
     const passwordHash = await bcrypt.hash(password, 10);
     const apiKey = generateApiKey();
-    
     await User.create({ email, passwordHash, apiKey });
     reply.redirect('/login');
   });
@@ -56,29 +60,24 @@ export function registerWebRoutes(fastify) {
   fastify.post('/login', async (req, reply) => {
     const { email, password } = req.body;
     const user = await User.findOne({ email: (email || '').toLowerCase() });
-    
     if (!user) {
       return reply.view('login.ejs', { error: 'Correo o contraseña incorrectos.' });
     }
-    
     const match = await bcrypt.compare(password, user.passwordHash);
     if (!match) {
       return reply.view('login.ejs', { error: 'Correo o contraseña incorrectos.' });
     }
-    
     const token = jwt.sign(
       { uid: user._id.toString() },
       config.JWT_SECRET,
       { expiresIn: '30d' }
     );
-    
     reply.setCookie('token', token, {
       path: '/',
       httpOnly: true,
       sameSite: 'lax',
       maxAge: 60 * 60 * 24 * 30
     });
-    
     reply.redirect('/dashboard');
   });
 
@@ -86,25 +85,21 @@ export function registerWebRoutes(fastify) {
   async function iniciarSesionComo(email, reply) {
     email = email.toLowerCase();
     let user = await User.findOne({ email });
-    
     if (!user) {
       const apiKey = generateApiKey();
       user = await User.create({ email, apiKey, authProvider: 'google' });
     }
-    
     const token = jwt.sign(
       { uid: user._id.toString() },
       config.JWT_SECRET,
       { expiresIn: '30d' }
     );
-    
     reply.setCookie('token', token, {
       path: '/',
       httpOnly: true,
       sameSite: 'lax',
       maxAge: 60 * 60 * 24 * 30
     });
-    
     reply.redirect('/dashboard');
   }
 
@@ -116,7 +111,6 @@ export function registerWebRoutes(fastify) {
         const { data: perfil } = await axios.get('https://www.googleapis.com/oauth2/v2/userinfo', {
           headers: { Authorization: `Bearer ${token.access_token}` }
         });
-        
         if (!perfil.email) throw new Error('Google no devolvió un correo.');
         await iniciarSesionComo(perfil.email, reply);
       } catch (e) {
@@ -134,19 +128,15 @@ export function registerWebRoutes(fastify) {
           Authorization: `Bearer ${token.access_token}`,
           'User-Agent': 'AlexScraperAPI'
         };
-        
         const { data: perfil } = await axios.get('https://api.github.com/user', { headers });
         let email = perfil.email;
-        
         if (!email) {
           const { data: emails } = await axios.get('https://api.github.com/user/emails', { headers });
           email = (emails.find(e => e.primary) || emails[0])?.email;
         }
-        
         if (!email) {
           throw new Error('GitHub no devolvió un correo.');
         }
-        
         await iniciarSesionComo(email, reply);
       } catch (e) {
         reply.redirect('/login?error=github');
@@ -165,9 +155,7 @@ export function registerWebRoutes(fastify) {
     const user = req.currentUser;
     user.refreshPlan();
     await user.save();
-    
     const limit = user.plan === 'premium' ? 'Ilimitadas' : config.FREE_LIMIT;
-    
     reply.view('dashboard.ejs', {
       email: user.email,
       apiKey: user.apiKey,
@@ -193,7 +181,6 @@ export function registerWebRoutes(fastify) {
   fastify.post('/admin/update-plan', { preHandler: requireAdmin }, async (req, reply) => {
     const { userId, plan, dias } = req.body;
     const user = await User.findById(userId);
-    
     if (user) {
       if (plan === 'premium') {
         const extra = (parseInt(dias, 10) || 30) * 24 * 60 * 60 * 1000;
@@ -207,7 +194,6 @@ export function registerWebRoutes(fastify) {
       }
       await user.save();
     }
-    
     reply.redirect('/admin');
   });
 
@@ -241,4 +227,5 @@ export function registerWebRoutes(fastify) {
       baseUrl: `${req.protocol}://${req.hostname}`
     });
   });
+
 }
