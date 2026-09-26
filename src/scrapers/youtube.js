@@ -32,10 +32,7 @@ async function infoVideoYoutube(url) {
   if (!id) throw new Error("Ese enlace no parece ser de YouTube.");
   
   const { data } = await axios.get('https://www.youtube.com/oembed', {
-    params: { 
-      url: `https://www.youtube.com/watch?v=${id}`, 
-      format: 'json' 
-    },
+    params: { url: `https://www.youtube.com/watch?v=${id}`, format: 'json' },
     timeout: 15000
   });
   
@@ -51,10 +48,7 @@ async function infoVideoYoutube(url) {
 async function buscarYoutube(query) {
   const { data: html } = await axios.get('https://www.youtube.com/results', {
     params: { search_query: query, hl: 'es' },
-    headers: {
-      ...YT_HEADERS,
-      'accept-language': 'es-ES,es;q=0.9'
-    },
+    headers: { ...YT_HEADERS, 'accept-language': 'es-ES,es;q=0.9' },
     timeout: 15000
   });
   
@@ -62,11 +56,8 @@ async function buscarYoutube(query) {
   if (!match?.[1]) throw new Error("No se pudo leer los resultados de YouTube.");
   
   let data;
-  try {
-    data = JSON.parse(match[1]);
-  } catch {
-    throw new Error("Error interpretando los resultados de YouTube.");
-  }
+  try { data = JSON.parse(match[1]); } 
+  catch { throw new Error("Error interpretando los resultados."); }
   
   const contents = data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
   const items = contents?.[0]?.itemSectionRenderer?.contents || [];
@@ -95,131 +86,8 @@ async function buscarYoutube(query) {
 }
 
 /* ===================================================
-   SCRAPER 1: DLSRV (mejorado para video)
+   HELPERS COMPARTIDOS
    =================================================== */
-
-const DLSRV_BASE = 'https://embed.dlsrv.online';
-
-function dlsrvHeaders(videoId) {
-  return {
-    'accept': '*/*',
-    'accept-language': 'es-419,es;q=0.9',
-    'content-type': 'application/json',
-    'origin': DLSRV_BASE,
-    'referer': `${DLSRV_BASE}/v2/full?videoId=${videoId}`,
-    'user-agent': YT_HEADERS['User-Agent']
-  };
-}
-
-async function dlsrvVideo(url, quality) {
-  console.log('[DLSRV] Iniciando descarga de video...');
-  const videoId = extractVideoId(url);
-  if (!videoId) throw new Error('[DLSRV] URL inválida');
-
-  const infoRes = await withTimeout(
-    axios.post(`${DLSRV_BASE}/api/info`, 
-      { videoId }, 
-      { headers: dlsrvHeaders(videoId), timeout: 15000 }
-    ),
-    15000,
-    '[DLSRV] Timeout obteniendo info'
-  );
-  
-  if (infoRes.data?.status !== 'info' || !infoRes.data?.info) {
-    throw new Error('[DLSRV] Sin información del video');
-  }
-
-  const info = infoRes.data.info;
-  const videos = (info.formats || [])
-    .filter(f => f.type === 'video')
-    .map(f => ({ quality: String(f.quality).replace(/p$/i, ''), size: Number(f.fileSize) || 0 }))
-    .sort((a, b) => Number(b.quality) - Number(a.quality));
-
-  const available = videos.map(v => v.quality);
-  let q = quality ? String(quality).replace(/p$/i, '') : '720';
-  
-  if (available.length && !available.includes(q)) {
-    q = available.find(a => Number(a) <= Number(q)) || available[available.length - 1];
-  }
-
-  console.log(`[DLSRV] Solicitando calidad: ${q}p`);
-
-  const dlRes = await withTimeout(
-    axios.post(
-      `${DLSRV_BASE}/api/download/mp4`,
-      { videoId, format: 'mp4', quality: q },
-      { headers: dlsrvHeaders(videoId), timeout: 20000 }
-    ),
-    20000,
-    '[DLSRV] Timeout generando video'
-  );
-
-  if (dlRes.data?.status !== 'tunnel' || !dlRes.data?.url) {
-    throw new Error('[DLSRV] No se generó el enlace de descarga');
-  }
-
-  console.log('[DLSRV] ✅ Enlace generado exitosamente');
-
-  return {
-    titulo: info.title || 'YouTube Video',
-    autor: 'Desconocido',
-    miniatura: info.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-    calidad: `${q}p`,
-    video_url: dlRes.data.url,
-    source: 'dlsrv'
-  };
-}
-
-async function dlsrvAudio(url) {
-  const videoId = extractVideoId(url);
-  if (!videoId) throw new Error('[DLSRV] URL inválida');
-
-  const infoRes = await withTimeout(
-    axios.post(`${DLSRV_BASE}/api/info`, 
-      { videoId }, 
-      { headers: dlsrvHeaders(videoId), timeout: 15000 }
-    ),
-    15000,
-    '[DLSRV] Timeout obteniendo info'
-  );
-  
-  if (infoRes.data?.status !== 'info' || !infoRes.data?.info) {
-    throw new Error('[DLSRV] Sin información');
-  }
-
-  const info = infoRes.data.info;
-
-  const dlRes = await withTimeout(
-    axios.post(
-      `${DLSRV_BASE}/api/download/mp3`,
-      { videoId, format: 'mp3', quality: '128' },
-      { headers: dlsrvHeaders(videoId), timeout: 15000 }
-    ),
-    15000,
-    '[DLSRV] Timeout generando audio'
-  );
-  
-  if (dlRes.data?.status !== 'tunnel' || !dlRes.data?.url) {
-    throw new Error('[DLSRV] Enlace de audio no generado');
-  }
-
-  return {
-    titulo: info.title || 'YouTube Video',
-    autor: 'Desconocido',
-    miniatura: info.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-    calidad: '128kbps',
-    audio_url: dlRes.data.url,
-    source: 'dlsrv'
-  };
-}
-
-/* ===================================================
-   SCRAPER 2: Y2MATE (solo para audio)
-   =================================================== */
-
-const Y2MATE_REFERER = 'https://y2mate.tw/';
-const Y2MATE_ORIGIN = 'https://y2mate.tw';
-
 function ranHash() {
   return Array.from(crypto.randomBytes(16), b => b.toString(16).padStart(2, '0')).join('');
 }
@@ -236,6 +104,160 @@ function encodeDecode(input) {
   return out;
 }
 
+/* ===================================================
+   SCRAPER 1: DLSRV (puede estar caído)
+   =================================================== */
+const DLSRV_BASE = 'https://embed.dlsrv.online';
+
+function dlsrvHeaders(videoId) {
+  return {
+    'accept': '*/*',
+    'content-type': 'application/json',
+    'origin': DLSRV_BASE,
+    'referer': `${DLSRV_BASE}/v2/full?videoId=${videoId}`,
+    'user-agent': YT_HEADERS['User-Agent']
+  };
+}
+
+async function dlsrvVideo(url, quality) {
+  console.log('[DLSRV-VIDEO] Intentando...');
+  const videoId = extractVideoId(url);
+  if (!videoId) throw new Error('[DLSRV] URL inválida');
+
+  const infoRes = await withTimeout(
+    axios.post(`${DLSRV_BASE}/api/info`, { videoId }, { headers: dlsrvHeaders(videoId), timeout: 15000 }),
+    15000, '[DLSRV] Timeout'
+  );
+  
+  if (infoRes.data?.status !== 'info' || !infoRes.data?.info) {
+    throw new Error('[DLSRV] Sin información');
+  }
+
+  const info = infoRes.data.info;
+  const videos = (info.formats || [])
+    .filter(f => f.type === 'video')
+    .map(f => ({ quality: String(f.quality).replace(/p$/i, '') }))
+    .sort((a, b) => Number(b.quality) - Number(a.quality));
+
+  let q = quality ? String(quality).replace(/p$/i, '') : '720';
+  const available = videos.map(v => v.quality);
+  if (available.length && !available.includes(q)) {
+    q = available.find(a => Number(a) <= Number(q)) || available[available.length - 1];
+  }
+
+  const dlRes = await withTimeout(
+    axios.post(`${DLSRV_BASE}/api/download/mp4`, { videoId, format: 'mp4', quality: q }, 
+      { headers: dlsrvHeaders(videoId), timeout: 20000 }),
+    20000, '[DLSRV] Timeout generando video'
+  );
+
+  if (dlRes.data?.status !== 'tunnel' || !dlRes.data?.url) {
+    throw new Error('[DLSRV] Sin enlace de descarga');
+  }
+
+  console.log('[DLSRV-VIDEO] ✅ Éxito');
+  return {
+    titulo: info.title,
+    autor: 'Desconocido',
+    miniatura: info.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+    calidad: `${q}p`,
+    video_url: dlRes.data.url,
+    source: 'dlsrv'
+  };
+}
+
+async function dlsrvAudio(url) {
+  const videoId = extractVideoId(url);
+  if (!videoId) throw new Error('[DLSRV] URL inválida');
+
+  const infoRes = await axios.post(`${DLSRV_BASE}/api/info`, { videoId }, 
+    { headers: dlsrvHeaders(videoId), timeout: 15000 });
+  
+  if (infoRes.data?.status !== 'info' || !infoRes.data?.info) {
+    throw new Error('[DLSRV] Sin información');
+  }
+
+  const info = infoRes.data.info;
+
+  const dlRes = await axios.post(`${DLSRV_BASE}/api/download/mp3`, 
+    { videoId, format: 'mp3', quality: '128' },
+    { headers: dlsrvHeaders(videoId), timeout: 15000 });
+  
+  if (dlRes.data?.status !== 'tunnel' || !dlRes.data?.url) {
+    throw new Error('[DLSRV] Sin enlace de audio');
+  }
+
+  return {
+    titulo: info.title,
+    autor: 'Desconocido',
+    miniatura: info.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+    calidad: '128kbps',
+    audio_url: dlRes.data.url,
+    source: 'dlsrv'
+  };
+}
+
+/* ===================================================
+   SCRAPER 2: SAVETUBE
+   =================================================== */
+function decodeSavetube(enc) {
+  const secretKey = Buffer.from('C5D58EF67A7584E4A29F6C35BBC4EB12', 'hex');
+  const data = Buffer.from(enc, 'base64');
+  const iv = data.subarray(0, 16);
+  const content = data.subarray(16);
+  const decipher = crypto.createDecipheriv('aes-128-cbc', secretKey, iv);
+  const decrypted = Buffer.concat([decipher.update(content), decipher.final()]);
+  return JSON.parse(decrypted.toString());
+}
+
+async function savetubeDownload(url, type = 'video', quality) {
+  console.log(`[SAVETUBE-${type.toUpperCase()}] Intentando...`);
+  const videoId = extractVideoId(url);
+  if (!videoId) throw new Error('[Savetube] URL inválida');
+
+  const isVideo = type === 'video';
+  const qual = (quality || (isVideo ? '720' : '128')).replace(/[p|kbps]/gi, '');
+
+  const cdnRes = await withTimeout(
+    axios.get('https://media.savetube.vip/api/random-cdn', { timeout: 10000 }),
+    10000, '[Savetube] Timeout CDN'
+  );
+  
+  if (!cdnRes.data?.cdn) throw new Error('[Savetube] CDN ilocalizable');
+  const cdn = cdnRes.data.cdn;
+
+  const infoRes = await axios.post(`https://${cdn}/v2/info`, 
+    { url: `https://youtube.com/watch?v=${videoId}` },
+    { headers: { 'content-type': 'application/json', 'user-agent': YT_HEADERS['User-Agent'], 'referer': 'https://save-tube.com/' }, timeout: 15000 }
+  );
+  
+  if (!infoRes.data?.data) throw new Error('[Savetube] Error de metadata');
+  const info = decodeSavetube(infoRes.data.data);
+
+  const dlRes = await axios.post(`https://${cdn}/download`, 
+    { downloadType: type, quality: String(qual), key: info.key },
+    { headers: { 'content-type': 'application/json', 'user-agent': YT_HEADERS['User-Agent'], 'referer': 'https://save-tube.com/' }, timeout: 20000 }
+  );
+
+  if (!dlRes.data?.data?.downloadUrl) throw new Error('[Savetube] Sin enlace');
+
+  console.log(`[SAVETUBE-${type.toUpperCase()}] ✅ Éxito`);
+  return {
+    titulo: info.title,
+    autor: 'Desconocido',
+    miniatura: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+    calidad: isVideo ? `${qual}p` : `${qual}kbps`,
+    ...(isVideo ? { video_url: dlRes.data.data.downloadUrl } : { audio_url: dlRes.data.data.downloadUrl }),
+    source: 'savetube'
+  };
+}
+
+/* ===================================================
+   SCRAPER 3: Y2MATE (video + audio)
+   =================================================== */
+const Y2MATE_REFERER = 'https://y2mate.tw/';
+const Y2MATE_ORIGIN = 'https://y2mate.tw';
+
 function apiEndpointY2mate(format, mp3Quality) {
   if (format === '1') return 'https://api5.apiapi2.lat';
   if (mp3Quality === '128') return 'https://api.apiapi2.lat';
@@ -246,18 +268,10 @@ async function postJsonY2mate(url, body) {
   try {
     const res = await withTimeout(
       axios.post(url, body, {
-        headers: {
-          'accept': '*/*',
-          'accept-language': 'es-419,es;q=0.9',
-          'origin': Y2MATE_ORIGIN,
-          'referer': Y2MATE_REFERER,
-          'content-type': 'application/json',
-          'user-agent': YT_HEADERS['User-Agent']
-        },
+        headers: { 'accept': '*/*', 'origin': Y2MATE_ORIGIN, 'referer': Y2MATE_REFERER, 'content-type': 'application/json', 'user-agent': YT_HEADERS['User-Agent'] },
         timeout: 10000
       }),
-      10000,
-      '[Y2Mate] Timeout'
+      10000, '[Y2Mate] Timeout'
     );
     return res.data;
   } catch {
@@ -265,46 +279,37 @@ async function postJsonY2mate(url, body) {
   }
 }
 
-async function y2mateAudio(url, quality) {
+async function y2mateDownload(url, type = 'video', quality) {
+  console.log(`[Y2MATE-${type.toUpperCase()}] Intentando...`);
   const videoId = extractVideoId(url);
   if (!videoId) throw new Error('[Y2Mate] URL inválida');
 
+  const isVideo = type === 'video';
+  const format = isVideo ? '1' : '0';
+  const mp4Q = quality ? String(quality).replace(/p$/i, '') : '720';
   const mp3Q = quality ? String(quality).replace(/kbps$/i, '') : '128';
-  const base = apiEndpointY2mate('0', mp3Q);
+  const base = apiEndpointY2mate(format, mp3Q);
 
   let initData = false;
   for (let i = 0; i < 2 && initData === false; i++) {
     initData = await postJsonY2mate(
       `${base}/${ranHash()}/init/${encUrl(url)}/${ranHash()}/`,
-      {
-        data: encodeDecode(url),
-        format: '0',
-        referer: Y2MATE_REFERER,
-        mp3Quality: mp3Q,
-        mp4Quality: '480',
-        userTimeZone: '300'
-      }
+      { data: encodeDecode(url), format, referer: Y2MATE_REFERER, mp3Quality: mp3Q, mp4Quality: mp4Q, userTimeZone: '300' }
     );
     if (initData === false) await new Promise(r => setTimeout(r, 800));
   }
   
   if (!initData) throw new Error('[Y2Mate] El servidor no respondió');
-  if (initData?.le) throw new Error('[Y2Mate] Video dura más de 4 horas');
-  if (initData?.i === 'blacklisted') throw new Error('[Y2Mate] Límite diario alcanzado');
+  if (initData?.le) throw new Error('[Y2Mate] Video > 4 horas');
+  if (initData?.i === 'blacklisted') throw new Error('[Y2Mate] Límite diario');
   if (initData?.i === 'invalid') throw new Error('[Y2Mate] URL inválida');
 
   let finalData = initData;
   if (initData.s !== 'C') {
     let data = false;
-    for (let count = 0; count < 15; count++) {
-      data = await postJsonY2mate(
-        `${base}/${ranHash()}/status/${initData.i}/${ranHash()}/`,
-        { data: initData.i }
-      );
-      if (data === false) {
-        await new Promise(r => setTimeout(r, 1500));
-        continue;
-      }
+    for (let count = 0; count < 20; count++) {
+      data = await postJsonY2mate(`${base}/${ranHash()}/status/${initData.i}/${ranHash()}/`, { data: initData.i });
+      if (data === false) { await new Promise(r => setTimeout(r, 1500)); continue; }
       if (data.s === 'C') break;
       await new Promise(r => setTimeout(r, 1500));
     }
@@ -314,153 +319,148 @@ async function y2mateAudio(url, quality) {
 
   const downloadUrl = `${base}/${ranHash()}/download/${finalData.i}/${ranHash()}/`;
   
+  console.log(`[Y2MATE-${type.toUpperCase()}] ✅ Éxito`);
   return {
     titulo: typeof finalData.t === 'string' ? finalData.t : 'YouTube Video',
     autor: 'Desconocido',
     miniatura: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-    calidad: `${mp3Q}kbps`,
-    audio_url: downloadUrl,
+    calidad: isVideo ? `${mp4Q}p` : `${mp3Q}kbps`,
+    ...(isVideo ? { video_url: downloadUrl } : { audio_url: downloadUrl }),
     source: 'y2mate'
   };
 }
 
 /* ===================================================
-   SCRAPER 3: SAVETUBE (video y audio)
+   SCRAPER 4: YT5S (nuevo - muy estable en 2026)
    =================================================== */
-
-function decodeSavetube(enc) {
-  const secretKey = Buffer.from('C5D58EF67A7584E4A29F6C35BBC4EB12', 'hex');
-  const data = Buffer.from(enc, 'base64');
-  const iv = data.subarray(0, 16);
-  const content = data.subarray(16);
-
-  const decipher = crypto.createDecipheriv('aes-128-cbc', secretKey, iv);
-  const decrypted = Buffer.concat([decipher.update(content), decipher.final()]);
-  return JSON.parse(decrypted.toString());
-}
-
-async function savetubeDownload(url, type = 'video', quality) {
+async function yt5sVideo(url, quality) {
+  console.log('[YT5S-VIDEO] Intentando...');
   const videoId = extractVideoId(url);
-  if (!videoId) throw new Error('[Savetube] URL inválida');
+  if (!videoId) throw new Error('[YT5S] URL inválida');
 
-  const isVideo = type === 'video';
-  const qual = (quality || (isVideo ? '720' : '128')).replace(/[p|kbps]/gi, '');
-  const downloadType = isVideo ? 'video' : 'audio';
-
-  const cdnRes = await withTimeout(
-    axios.get('https://media.savetube.vip/api/random-cdn', { timeout: 10000 }),
-    10000,
-    '[Savetube] Timeout obteniendo CDN'
-  );
-  
-  if (!cdnRes.data?.cdn) throw new Error('[Savetube] CDN ilocalizable');
-  const cdn = cdnRes.data.cdn;
-
-  const infoRes = await withTimeout(
-    axios.post(
-      `https://${cdn}/v2/info`,
-      { url: `https://youtube.com/watch?v=${videoId}` },
+  // Paso 1: Obtener info y lista de formatos
+  const searchRes = await withTimeout(
+    axios.post('https://yt5s.in/api/ajaxSearch', 
+      new URLSearchParams({ 
+        q: `https://www.youtube.com/watch?v=${videoId}`, 
+        vt: 'mp4' 
+      }),
       {
         headers: {
-          'content-type': 'application/json',
+          'content-type': 'application/x-www-form-urlencoded',
           'user-agent': YT_HEADERS['User-Agent'],
-          'referer': 'https://save-tube.com/'
-        },
-        timeout: 15000
-      }
-    ),
-    15000,
-    '[Savetube] Timeout obteniendo info'
-  );
-  
-  if (!infoRes.data?.data) throw new Error('[Savetube] Error de metadata');
-  const info = decodeSavetube(infoRes.data.data);
-
-  const dlRes = await withTimeout(
-    axios.post(
-      `https://${cdn}/download`,
-      { downloadType, quality: String(qual), key: info.key },
-      {
-        headers: {
-          'content-type': 'application/json',
-          'user-agent': YT_HEADERS['User-Agent'],
-          'referer': 'https://save-tube.com/'
+          'origin': 'https://yt5s.in',
+          'referer': 'https://yt5s.in/'
         },
         timeout: 20000
       }
     ),
-    20000,
-    '[Savetube] Timeout generando descarga'
+    20000, '[YT5S] Timeout obteniendo info'
   );
 
-  if (!dlRes.data?.data?.downloadUrl) throw new Error('[Savetube] Sin enlace');
+  if (!searchRes.data?.links?.mp4) {
+    throw new Error('[YT5S] No hay formatos de video disponibles');
+  }
 
+  const mp4Links = searchRes.data.links.mp4;
+  const qualities = Object.keys(mp4Links);
+  
+  // Buscar calidad deseada o la mejor disponible
+  const q = quality ? String(quality).replace(/p$/i, '') : '720';
+  let selectedKey = qualities.find(k => k.includes(q)) || 
+                    qualities.find(k => k.includes('720')) || 
+                    qualities.find(k => k.includes('480')) || 
+                    qualities.find(k => k.includes('360')) ||
+                    qualities[0];
+  
+  const linkData = mp4Links[selectedKey];
+  if (!linkData?.k) throw new Error('[YT5S] No se encontró enlace de descarga');
+
+  // Paso 2: Obtener URL de descarga real
+  const convertRes = await withTimeout(
+    axios.post('https://yt5s.in/api/ajaxConvert', 
+      new URLSearchParams({ 
+        v_id: videoId, 
+        ftype: 'mp4', 
+        fquality: selectedKey 
+      }),
+      {
+        headers: {
+          'content-type': 'application/x-www-form-urlencoded',
+          'user-agent': YT_HEADERS['User-Agent'],
+          'origin': 'https://yt5s.in',
+          'referer': 'https://yt5s.in/'
+        },
+        timeout: 30000
+      }
+    ),
+    30000, '[YT5S] Timeout generando descarga'
+  );
+
+  if (!convertRes.data?.dlink) {
+    throw new Error('[YT5S] No se generó el enlace de descarga');
+  }
+
+  console.log('[YT5S-VIDEO] ✅ Éxito');
   return {
-    titulo: info.title || 'YouTube Video',
+    titulo: searchRes.data.title || 'YouTube Video',
     autor: 'Desconocido',
     miniatura: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-    calidad: isVideo ? `${qual}p` : `${qual}kbps`,
-    ...(isVideo ? { video_url: dlRes.data.data.downloadUrl } : { audio_url: dlRes.data.data.downloadUrl }),
-    source: 'savetube'
+    calidad: selectedKey.includes('p') ? selectedKey : `${selectedKey}p`,
+    video_url: convertRes.data.dlink,
+    source: 'yt5s'
   };
 }
 
 /* ===================================================
-   ESTRATEGIA DIFERENTE PARA VIDEO Y AUDIO
+   ESTRATEGIA: SECUENCIA DE 4 SCRAPERS PARA VIDEO
    =================================================== */
-
-// Para VIDEO: probar en SECUENCIA (DLSRV → Savetube)
 async function downloadVideo(url, quality) {
-  console.log('[VIDEO] Iniciando descarga de video en secuencia...');
+  console.log('[VIDEO] Iniciando descarga con 4 scrapers en secuencia...');
   
-  // Intentar DLSRV primero
+  // 1. YT5S (más estable en 2026)
   try {
-    console.log('[VIDEO] Probando DLSRV...');
-    const result = await dlsrvVideo(url, quality);
-    console.log('[VIDEO] ✅ DLSRV funcionó');
-    return result;
+    return await yt5sVideo(url, quality);
   } catch (e) {
-    console.log(`[VIDEO] ❌ DLSRV falló: ${e.message}`);
+    console.log(`[VIDEO] ❌ YT5S falló: ${e.message}`);
   }
   
-  // Si DLSRV falla, intentar Savetube
+  // 2. Y2Mate (funciona bien para audio, probar video)
   try {
-    console.log('[VIDEO] Probando Savetube...');
-    const result = await savetubeDownload(url, 'video', quality);
-    console.log('[VIDEO] ✅ Savetube funcionó');
-    return result;
+    return await y2mateDownload(url, 'video', quality);
+  } catch (e) {
+    console.log(`[VIDEO] ❌ Y2Mate falló: ${e.message}`);
+  }
+  
+  // 3. Savetube
+  try {
+    return await savetubeDownload(url, 'video', quality);
   } catch (e) {
     console.log(`[VIDEO] ❌ Savetube falló: ${e.message}`);
   }
   
-  throw new Error('Todos los scrapers de video fallaron. Intenta con otra URL.');
+  // 4. DLSRV (último recurso)
+  try {
+    return await dlsrvVideo(url, quality);
+  } catch (e) {
+    console.log(`[VIDEO] ❌ DLSRV falló: ${e.message}`);
+  }
+  
+  throw new Error('Los 4 scrapers de video fallaron. Intenta con otra URL.');
 }
 
-// Para AUDIO: carrera triple (funciona bien)
 async function downloadAudio(url, quality) {
   const tasks = [
-    dlsrvAudio(url).catch(e => {
-      throw new Error(`[DLSRV] ${e.message}`);
-    }),
-    y2mateAudio(url, quality).catch(e => {
-      throw new Error(`[Y2Mate] ${e.message}`);
-    }),
-    savetubeDownload(url, 'audio', quality).catch(e => {
-      throw new Error(`[Savetube] ${e.message}`);
-    })
+    dlsrvAudio(url).catch(e => { throw new Error(`[DLSRV] ${e.message}`); }),
+    y2mateDownload(url, 'audio', quality).catch(e => { throw new Error(`[Y2Mate] ${e.message}`); }),
+    savetubeDownload(url, 'audio', quality).catch(e => { throw new Error(`[Savetube] ${e.message}`); })
   ];
 
   try {
-    return await withTimeout(
-      Promise.any(tasks),
-      30000,
-      'Timeout en descarga de audio'
-    );
+    return await withTimeout(Promise.any(tasks), 30000, 'Timeout en audio');
   } catch (err) {
     if (err instanceof AggregateError && err.errors?.length) {
-      const msgs = err.errors
-        .map(e => (e instanceof Error ? e.message : String(e)))
-        .join(' · ');
+      const msgs = err.errors.map(e => (e instanceof Error ? e.message : String(e))).join(' · ');
       throw new Error(`Los 3 scrapers de audio fallaron: ${msgs}`);
     }
     throw err;
@@ -470,13 +470,10 @@ async function downloadAudio(url, quality) {
 /* ===================================================
    EXPORTS FINALES
    =================================================== */
-
 export async function scraperYoutube(input) {
   return conReintentos(async () => {
     try {
-      if (esEnlace(input)) {
-        return await infoVideoYoutube(input);
-      }
+      if (esEnlace(input)) return await infoVideoYoutube(input);
       return await buscarYoutube(input);
     } catch (e) {
       if (e.message) throw e;
@@ -491,25 +488,16 @@ export async function scraperYoutubeMp4(input) {
     
     if (!esEnlace(input)) {
       console.log('[MP4] Buscando video en YouTube...');
-      const resultados = await withTimeout(
-        buscarYoutube(input),
-        15000,
-        'Timeout buscando en YouTube'
-      );
+      const resultados = await withTimeout(buscarYoutube(input), 15000, 'Timeout buscando');
       url = resultados[0]?.url;
       if (!url) throw new Error("No se encontró ningún video.");
       console.log(`[MP4] Video encontrado: ${url}`);
     }
 
-    console.log('[MP4] Iniciando descarga de video...');
-    const resultado = await withTimeout(
-      downloadVideo(url, '720'),
-      45000,
-      'La descarga de video tardó demasiado (45s)'
-    );
+    console.log('[MP4] Iniciando descarga...');
+    const resultado = await withTimeout(downloadVideo(url, '720'), 90000, 'Timeout MP4 (90s)');
     
     console.log('[MP4] ✅ Descarga completada');
-    
     return {
       titulo: resultado.titulo,
       autor: resultado.autor,
@@ -527,11 +515,7 @@ export async function scraperYoutubeMp3(input) {
     let url = input;
     
     if (!esEnlace(input)) {
-      const resultados = await withTimeout(
-        buscarYoutube(input),
-        15000,
-        'Timeout buscando en YouTube'
-      );
+      const resultados = await withTimeout(buscarYoutube(input), 15000, 'Timeout buscando');
       url = resultados[0]?.url;
       if (!url) throw new Error("No se encontró ningún video.");
     }
